@@ -1,30 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'core/supabase_client.dart';
+import 'screens/auth/login_screen.dart';
 import 'AI VISA/screens/visa_application_screen.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase (Replace with your actual URL and Anon Key)
-  await Supabase.initialize(
-    url: 'https://kfvhnpkkwxipschhlouk.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmdmhucGtrd3hpcHNjaGhsb3VrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMzY4NzksImV4cCI6MjA5ODcxMjg3OX0.4IX5V5CvzClsiM4vuafW8NAwBVE1YhGDdmpeo1eaIWs',
-  );
+  // Initialize Supabase
+  await SupabaseConfig.initialize();
 
   runApp(const MyFindApp());
 }
 
 class MyFindApp extends StatelessWidget {
-  const MyFindApp({Key? key}) : super(key: key);
+  const MyFindApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MyFind Visa System',
+      title: 'Tourism & Immigration System',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
         scaffoldBackgroundColor: Colors.white,
-        colorScheme: const ColorScheme.light(primary: Colors.blue),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
           elevation: 1,
@@ -36,8 +36,15 @@ class MyFindApp extends StatelessWidget {
           ),
         ),
       ),
-      // Since we assume the user is already logged in, we go straight to the Visa screen
-      home: const VisaApplicationScreen(),
+
+      // Start with login screen
+      home: const LoginScreen(),
+
+      // Define routes for navigation
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/visa': (context) => const VisaApplicationScreen(),
+      },
     );
   }
 }
