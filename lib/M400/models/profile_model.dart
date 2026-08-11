@@ -11,6 +11,9 @@ class ProfileModel {
   final String verificationStatus;
   final String? passportFrontUrl;
   final String? passportBackUrl;
+  final String? nickname;
+  final String? profileImage;
+  final String? preferredLanguage;
 
   ProfileModel({
     required this.id,
@@ -25,18 +28,17 @@ class ProfileModel {
     required this.verificationStatus,
     this.passportFrontUrl,
     this.passportBackUrl,
+    this.nickname,
+    this.profileImage,
+    this.preferredLanguage,
   });
 
-  /// Combines one shared `profiles` row with its role-specific table row.
-  /// Passwords are deliberately absent: Supabase Auth stores password hashes
-  /// in its private `auth.users` schema.
   factory ProfileModel.fromRecords(
-    Map<String, dynamic> profile,
-    Map<String, dynamic>? roleDetails,
-  ) {
+      Map<String, dynamic> profile,
+      Map<String, dynamic>? roleDetails,
+      ) {
     final role = profile['role'] as String? ?? 'tourist';
     final details = roleDetails ?? const <String, dynamic>{};
-
     return ProfileModel(
       id: profile['id'] as String,
       authId: profile['auth_id'] as String,
@@ -52,6 +54,9 @@ class ProfileModel {
           : (details['verification_status'] as String? ?? 'pending'),
       passportFrontUrl: details['passport_front_url'] as String?,
       passportBackUrl: details['passport_back_url'] as String?,
+      nickname: profile['nickname'] as String?,
+      profileImage: profile['profile_image'] as String?,
+      preferredLanguage: profile['preferred_language'] as String? ?? 'English',
     );
   }
 

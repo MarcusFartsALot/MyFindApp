@@ -4,28 +4,32 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-class VisaReportScreen extends StatefulWidget {
-  final String applicationId;
+import '../../M400/models/profile_model.dart';
 
-  const VisaReportScreen({Key? key, required this.applicationId}) : super(key: key);
+class VisaHistoryScreen extends StatefulWidget {
+  final ProfileModel profile;
+
+  const VisaHistoryScreen({super.key, required this.profile});
 
   @override
-  State<VisaReportScreen> createState() => _VisaReportScreenState();
+  State<VisaHistoryScreen> createState() => _VisaHistoryScreenState();
 }
 
-class _VisaReportScreenState extends State<VisaReportScreen> {
+class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = true;
-  Map<String, dynamic>? _applicationData;
+  List<Map<String, dynamic>> _applications = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchComprehensiveReport();
+    _fetchVisaHistory();
   }
 
-  Future<void> _fetchComprehensiveReport() async {
+  Future<void> _fetchVisaHistory() async {
+    setState(() => _isLoading = true);
     try {
+      // Updated query to fetch ALL comprehensive relational tables
       final response = await _supabase
           .from('visa_applications')
           .select('''
@@ -38,30 +42,21 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
             travel_history(*),
             payment_transactions(*)
           ''')
-          .eq('id', widget.applicationId)
-          .single();
+          .eq('user_id', widget.profile.id)
+          .order('created_at', ascending: false);
 
       if (mounted) {
         setState(() {
-          _applicationData = response;
+          _applications = List<Map<String, dynamic>>.from(response);
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showSnackBar("Error loading comprehensive report data.", isError: true);
+        _showSnackBar("Unable to query history records. Please try again.", isError: true);
       }
     }
-  }
-
-  Map<String, dynamic>? _extractMap(dynamic source) {
-    if (source is List && source.isNotEmpty) {
-      return Map<String, dynamic>.from(source.first as Map);
-    } else if (source is Map) {
-      return Map<String, dynamic>.from(source);
-    }
-    return null;
   }
 
   String _formatBool(dynamic value) {
@@ -69,14 +64,14 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
     return (value == true || value == 'true') ? 'Yes' : 'No';
   }
 
-  Future<void> _downloadFullPdfReport() async {
-    if (_applicationData == null) return;
-
+  Future<void> _downloadPdfReport(Map<String, dynamic> app) async {
     try {
-      final app = _applicationData!;
-      final appId = app['id'] ?? 'N/A';
-      final submittedAt = app['submitted_at'] != null ? app['submitted_at'].toString().split('T')[0] : 'N/A';
+      final String appId = app['id'] ?? 'N/A';
+      final String submittedAt = app['submitted_at'] != null
+          ? app['submitted_at'].toString().split('T')[0]
+          : 'N/A';
 
+      // Extract all relational data
       final applicant = _extractMap(app['applicant_information']);
       final employment = _extractMap(app['employment_information']);
       final financial = _extractMap(app['financial_information']);
@@ -90,7 +85,7 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
 
       final pdf = pw.Document();
 
-      // Using MultiPage because the comprehensive form data will likely exceed one page
+      // Use MultiPage for comprehensive report
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -121,7 +116,7 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
               pw.Text("Transaction ID: ${payment?['stripe_transaction_id'] ?? 'N/A'}"),
               pw.SizedBox(height: 24),
 
-              // 1. AI Assessment Result (Prioritized at the top)
+              // 1. AI Assessment Result
               _buildPdfSectionTitle("1. AI RISK ASSESSMENT RESULT"),
               pw.Container(
                 padding: const pw.EdgeInsets.all(12),
@@ -219,6 +214,15 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
     );
   }
 
+  Map<String, dynamic>? _extractMap(dynamic source) {
+    if (source is List && source.isNotEmpty) {
+      return Map<String, dynamic>.from(source.first as Map);
+    } else if (source is Map) {
+      return Map<String, dynamic>.from(source);
+    }
+    return null;
+  }
+
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -234,111 +238,156 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('ASSESSMENT REPORT', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
-      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
-          : _applicationData == null
-          ? const Center(child: Text("Error loading report details.", style: TextStyle(color: Color(0xFF0F172A))))
-          : _buildReportSummary(),
+          : _applications.isEmpty
+          ? _buildEmptyState()
+          : _buildHistoryList(),
     );
   }
 
-  Widget _buildReportSummary() {
-    final prediction = _extractMap(_applicationData!['risk_predictions']);
-    final double riskScore = double.tryParse(prediction?['risk_score']?.toString() ?? '0') ?? 0.0;
-    final double successRate = 100.0 - riskScore;
-
-    final bool isApproved = prediction?['recommendation'] == 'Approve';
-    final bool isReview = prediction?['recommendation'] == 'Manual Review';
-
-    final Color statusColor = isApproved ? const Color(0xFF15803D) : (isReview ? const Color(0xFFD97706) : const Color(0xFFDC2626));
-    final IconData statusIcon = isApproved ? Icons.verified : (isReview ? Icons.warning_rounded : Icons.cancel);
-
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 20),
-          Icon(statusIcon, size: 64, color: statusColor),
-          const SizedBox(height: 16),
-          const Text(
-            "AI SUCCESS EVALUATION RATE",
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 1),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "${successRate.toStringAsFixed(1)}%",
-            style: TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: statusColor, letterSpacing: -1),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.folder_open_rounded, size: 48, color: Color(0xFF94A3B8)),
             ),
-            child: Text(
-              "Status: ${prediction?['recommendation']?.toString().toUpperCase() ?? 'N/A'}",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: statusColor),
+            const SizedBox(height: 20),
+            const Text(
+              "No Application Records",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
             ),
-          ),
-          const SizedBox(height: 32),
-          Container(
-            padding: const EdgeInsets.all(20),
+            const SizedBox(height: 8),
+            const Text(
+              "You have no visa application history yet. Click 'Start New Visa Application' on the Home tab to begin.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryList() {
+    return RefreshIndicator(
+      onRefresh: _fetchVisaHistory,
+      color: const Color(0xFF1E3A8A),
+      child: ListView.builder(
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        padding: const EdgeInsets.all(16),
+        itemCount: _applications.length,
+        itemBuilder: (context, index) {
+          final app = _applications[index];
+          final String appId = app['id'] ?? 'N/A';
+          final String submittedAt = app['submitted_at'] != null
+              ? app['submitted_at'].toString().split('T')[0]
+              : 'N/A';
+
+          final applicant = _extractMap(app['applicant_information']);
+          final travel = _extractMap(app['travel_information']);
+          final prediction = _extractMap(app['risk_predictions']);
+          final payment = _extractMap(app['payment_transactions']);
+
+          final String txnId = payment?['stripe_transaction_id'] ?? 'N/A';
+          final double riskScore = double.tryParse(prediction?['risk_score']?.toString() ?? '0') ?? 0.0;
+          final double successRate = 100.0 - riskScore;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.memory, size: 18, color: Color(0xFF1E3A8A)),
-                    SizedBox(width: 8),
-                    Text("AI Assessment Reasoning", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A))),
-                  ],
+            child: ExpansionTile(
+              shape: const Border(),
+              leading: CircleAvatar(
+                radius: 18,
+                backgroundColor: successRate >= 70
+                    ? const Color(0xFFDCFCE7)
+                    : (successRate >= 40 ? const Color(0xFFFEF3C7) : const Color(0xFFFEE2E2)),
+                child: Icon(
+                  successRate >= 70 ? Icons.check_rounded : (successRate >= 40 ? Icons.priority_high_rounded : Icons.close_rounded),
+                  size: 18,
+                  color: successRate >= 70 ? const Color(0xFF15803D) : (successRate >= 40 ? const Color(0xFFD97706) : const Color(0xFFDC2626)),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  prediction?['prediction_reason'] ?? 'No specific reasoning provided by the AI engine.',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.5),
+              ),
+              title: Text(
+                'REF: #${appId.substring(0, 8).toUpperCase()}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+              ),
+              subtitle: Text(
+                'Submitted: $submittedAt',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              ),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${successRate.toStringAsFixed(0)}% Score',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Color(0xFF1E3A8A)),
+                ),
+              ),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: const Color(0xFFF8FAFC),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                      const SizedBox(height: 12),
+                      _infoRow('Applicant', applicant?['full_name'] ?? widget.profile.fullName),
+                      _infoRow('Passport', applicant?['passport_number'] ?? 'N/A'),
+                      _infoRow('Nationality', applicant?['nationality'] ?? 'N/A'),
+                      _infoRow('Destination', travel?['intended_destination'] ?? 'N/A'),
+                      _infoRow('Transaction ID', txnId),
+                      _infoRow('AI Risk Level', prediction?['risk_level'] ?? 'N/A'),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF1E3A8A)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () => _downloadPdfReport(app),
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 16, color: Color(0xFF1E3A8A)),
+                          label: const Text('Download Official PDF', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-          const Spacer(),
-          const Text(
-            "Download the official PDF below for a complete breakdown of all submitted parameters.",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A8A),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _downloadFullPdfReport,
-              icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white),
-              label: const Text(
-                "DOWNLOAD COMPREHENSIVE PDF",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
         ],
       ),
     );
