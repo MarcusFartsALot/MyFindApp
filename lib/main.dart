@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'config/app_config.dart';
 import 'core/supabase_client.dart';
-import 'screens/auth/login_screen.dart';
+import 'M400/screens/auth/login_screen.dart';
+import 'M400/screens/router/session_gate.dart';
 import 'AI VISA/screens/visa_application_screen.dart';
 
 Future<void> main() async {
@@ -19,7 +21,7 @@ class MyFindApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Tourism & Immigration System',
+      title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -37,8 +39,8 @@ class MyFindApp extends StatelessWidget {
         ),
       ),
 
-      // Start with login screen
-      home: const LoginScreen(),
+      // Restores valid sessions and handles Supabase password-recovery links.
+      home: const SessionGate(),
 
       // Define routes for navigation
       routes: {

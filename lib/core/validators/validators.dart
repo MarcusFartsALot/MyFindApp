@@ -11,8 +11,12 @@ class Validators {
   static String? password(String? value) {
     if (value == null || value.isEmpty) return 'Password is required';
     if (value.length < 8) return 'Password must be at least 8 characters';
-    if (!RegExp(r'[A-Z]').hasMatch(value)) return 'Include at least one uppercase letter';
-    if (!RegExp(r'[a-z]').hasMatch(value)) return 'Include at least one lowercase letter';
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Include at least one uppercase letter';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Include at least one lowercase letter';
+    }
     if (!RegExp(r'[0-9]').hasMatch(value)) return 'Include at least one number';
     if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(value)) {
       return 'Include at least one special character';
@@ -30,18 +34,20 @@ class Validators {
   /// Passport formats differ by issuing country (length and allowed
   /// characters both vary), so a single regex cannot perfectly
   /// validate every country's scheme. This enforces the common ICAO
-  /// baseline used by most production systems: 5-9 uppercase
+  /// baseline used by this application: 6-20 uppercase
   /// alphanumeric characters, no spaces or symbols. It intentionally
   /// does NOT attempt per-country checksum validation - if you need
   /// that level of certainty, pair this with a document-verification
   /// provider (e.g. Onfido, Jumio) that OCRs and validates the MRZ
   /// (machine-readable zone) on the photo itself.
   static String? passportNumber(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Passport number is required';
+    if (value == null || value.trim().isEmpty) {
+      return 'Passport number is required';
+    }
     final v = value.trim().toUpperCase();
-    final regex = RegExp(r'^[A-Z0-9]{5,9}$');
+    final regex = RegExp(r'^[A-Z0-9]{6,20}$');
     if (!regex.hasMatch(v)) {
-      return 'Passport number must be 5-9 letters/numbers, no spaces or symbols';
+      return 'Passport number must be 6-20 letters/numbers, no spaces or symbols';
     }
     return null;
   }

@@ -1,6 +1,11 @@
-# my_find
+# MyFind
 
-A new Flutter project.
+The Flutter mobile app and PHP administrator portal for the Tourism &
+Immigration System.
+
+Module 400 setup is documented in [MODULE_400_SETUP.md](MODULE_400_SETUP.md).
+
+For the shortest local run instructions, see [QUICK_START.md](QUICK_START.md).
 
 ## Getting Started
 
