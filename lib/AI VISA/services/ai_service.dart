@@ -1,17 +1,63 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class AiService {
   final String _aiApiKey = "AQ.Ab8RN6KzVkLBxtFqlWOHdpBAGA_vYkNj7DIYAWxsgJqROByneA";
   final String _aiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
 
+  /// Evaluates the entire structured application dataset for security, financial sanity, and semantic consistency
   Future<Map<String, dynamic>> evaluateApplication({
-    required double completenessScore,
-    required String nationality,
-    required String purpose,
-    required String income,
+    required Map<String, dynamic> fullApplicationData,
   }) async {
     try {
+      final String jsonPayload = jsonEncode(fullApplicationData);
+
+      final String systemPrompt = '''
+You are an expert Senior Immigration Security Officer and Threat Intelligence AI Engine for Visit Malaysia 2026 (VM2026).
+Your responsibility is to thoroughly analyze the full submitted visa application for security threats, malicious intent, financial viability, travel history risks, and logical inconsistencies.
+
+DO NOT simply award a high approval rate because fields are filled out. You must critically audit the SUBSTANCE, INTENT, AND SANITY of every answer.
+
+SUBMITTED APPLICATION DATA (JSON):
+$jsonPayload
+
+EVALUATION RUBRIC & MANDATORY AUDIT DIRECTIVES:
+
+1. SECURITY THREAT & MALICIOUS INTENT SCREENING (HIGHEST PRIORITY):
+   - Audit all free-text inputs (Purpose of Visit, Occupation, Company Name, Hotel Name, Emergency Details, etc.).
+   - Search for illegal intent, hostile/violent statements (e.g., "to kill people", "drugs", "illegal work", "overstay"), criminal threats, or nonsensical gibberish (e.g., "asdfghj", "123456").
+   - RED FLAG RULE: If ANY illegal, violent, or hostile intent is detected (such as "to kill people"), IMMEDIATELY output:
+     * risk_score = 100
+     * risk_level = "High"
+     * recommendation = "Reject"
+     * prediction_reason = "CRITICAL SECURITY THREAT DETECTED: Illegal or hostile intent stated in submitted information."
+
+2. FINANCIAL FEASIBILITY & LOGICAL SANITY:
+   - Cross-examine Monthly Income, Annual Income, Account Balance, and Monthly Expenses.
+   - Evaluate whether the liquid account balance is realistic and sufficient to support the specified destination, hotel, flight, and travel duration.
+   - Detect contradictions (e.g., zero account balance with high expenses, or inflated claims).
+
+3. TRAVEL HISTORY & IMMIGRATION RECORD AUDIT:
+   - Check `previous_overstay_record`, `previous_deportation`, and `immigration_violation`.
+   - If any overstay or deportation is true, significantly elevate the risk_score (Risk Score >= 80) and set recommendation to "Manual Review" or "Reject".
+
+4. EMPLOYMENT & TIES TO HOME COUNTRY:
+   - Unemployed applicants with insufficient liquid funds or no return ticket represent a high overstay risk.
+
+5. LOGISTICAL CONSISTENCY:
+   - Verify that dates, purpose of visit, accommodation, and flight details form a coherent, legitimate itinerary.
+
+OUTPUT REQUIREMENTS:
+Return ONLY a valid, raw JSON object (with NO markdown, code blocks, or preamble) formatted as follows:
+{
+  "risk_score": <number from 0 to 100, where 0 = no risk/highest success probability, and 100 = extreme risk/threat>,
+  "risk_level": "<Low | Medium | High>",
+  "recommendation": "<Approve | Manual Review | Reject>",
+  "prediction_reason": "<Clear, professional immigration summary explaining exact findings, detected red flags, financial logic, or safety reasons.>"
+}
+''';
+
       final response = await http.post(
         Uri.parse('$_aiEndpoint?key=$_aiApiKey'),
         headers: {
@@ -21,33 +67,16 @@ class AiService {
         body: jsonEncode({
           "contents": [{
             "parts": [{
-              "text": "You are an official immigration risk assessment AI for Visit Malaysia 2026 (VM2026). "
-                  "Rigorously evaluate the following applicant profile: "
-                  "Data Completeness Score: $completenessScore%. "
-                  "Applicant Nationality: $nationality. "
-                  "Purpose of Visit: $purpose. "
-                  "Monthly Income / Financials: $income. "
-                  "STRICT RULES FOR EVALUATION: "
-                  "1. If data completeness is below 90% or critical financial fields are empty/low, heavily penalize the score. "
-                  "2. Calculate a precise 'risk_score' from 0 to 100 (where 0 is no risk, 100 is extreme overstay risk). "
-                  "3. Determine 'risk_level' as 'Low', 'Medium', or 'High'. "
-                  "4. Provide a professional, strict immigration 'reasoning' paragraph. "
-                  "Return ONLY a valid JSON object with keys: 'risk_score' (number), 'risk_level' (string), 'recommendation' ('Approve'|'Manual Review'|'Reject'), 'prediction_reason' (string)."
+              "text": systemPrompt
             }]
           }]
         }),
       );
 
-      print("============= AI ENGINE DIAGNOSTICS =============");
-      print("HTTP Status Code: ${response.statusCode}");
-      print("Raw Server Response: ${response.body}");
-      print("==================================================");
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final candidateText = data['candidates'][0]['content']['parts'][0]['text'];
+        final String candidateText = data['candidates'][0]['content']['parts'][0]['text'];
 
-        // Clean up markdown formatting if Gemini includes ```json ... ```
         final cleanedJsonText = candidateText
             .replaceAll('```json', '')
             .replaceAll('```', '')
@@ -56,23 +85,21 @@ class AiService {
         final Map<String, dynamic> parsedAiResult = jsonDecode(cleanedJsonText);
 
         return {
-          'risk_score': parsedAiResult['risk_score'] ?? (100.0 - completenessScore),
+          'risk_score': (parsedAiResult['risk_score'] as num?)?.toDouble() ?? 50.0,
           'risk_level': parsedAiResult['risk_level'] ?? 'Medium',
           'recommendation': parsedAiResult['recommendation'] ?? 'Manual Review',
-          'prediction_reason': parsedAiResult['prediction_reason'] ?? 'Evaluated based on profile parameters.',
+          'prediction_reason': parsedAiResult['prediction_reason'] ?? 'Evaluated based on submitted profile parameters.',
         };
       } else {
-        throw Exception('AI Engine rejected request with code ${response.statusCode}.');
+        throw Exception('AI Engine returned status code ${response.statusCode}');
       }
     } catch (e) {
-      print("Network/Parsing Exception caught in AiService: $e");
-      // Fallback strict algorithmic calculation if network parsing fails
-      double fallbackRisk = (100.0 - completenessScore).clamp(0, 100);
+      debugPrint("AiService Evaluation Exception: $e");
       return {
-        'risk_score': fallbackRisk,
-        'risk_level': fallbackRisk > 50 ? 'High' : 'Low',
-        'recommendation': fallbackRisk > 50 ? 'Reject' : 'Approve',
-        'prediction_reason': 'Fallback evaluation applied due to strict parsing rules.',
+        'risk_score': 50.0,
+        'risk_level': 'Medium',
+        'recommendation': 'Manual Review',
+        'prediction_reason': 'Automated assessment fallback triggered due to data evaluation formatting.',
       };
     }
   }

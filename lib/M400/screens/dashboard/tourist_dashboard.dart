@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/profile_model.dart';
 
 import '../../../AI VISA/screens/visa_history_screen.dart';
 import '../../../AI VISA/screens/visa_application_screen.dart';
-import '../../../AI VISA/screens/profile_settings_screen.dart';
+import '../../../AI VISA/screens/me_screen.dart';
 
 class TouristDashboard extends StatefulWidget {
   final ProfileModel profile;
@@ -16,6 +17,35 @@ class TouristDashboard extends StatefulWidget {
 
 class _TouristDashboardState extends State<TouristDashboard> {
   int _selectedIndex = 0;
+  late ProfileModel _currentProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentProfile = widget.profile;
+  }
+
+  /// Real-time profile state refresh logic
+  Future<void> _refreshProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final profileData = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('auth_id', user.id)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _currentProfile = ProfileModel.fromRecords(profileData, null);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error refreshing live profile: $e");
+    }
+  }
 
   void _onItemTapped(int index) {
     if (_selectedIndex != index) {
@@ -29,8 +59,11 @@ class _TouristDashboardState extends State<TouristDashboard> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       _buildHomeTab(),
-      VisaHistoryScreen(profile: widget.profile),
-      ProfileSettingsScreen(profile: widget.profile),
+      VisaHistoryScreen(profile: _currentProfile),
+      MeScreen(
+        profile: _currentProfile,
+        onProfileUpdated: _refreshProfile,
+      ),
     ];
 
     return Scaffold(
@@ -129,7 +162,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
               activeIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
+              label: 'Me', // Renamed to 'Me'
             ),
           ],
         ),
@@ -153,7 +186,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
                 ),
                 Text(
-                  widget.profile.fullName,
+                  _currentProfile.nickname ?? _currentProfile.fullName,
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
@@ -237,7 +270,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
               ),
               const SizedBox(height: 24),
               Text(
-                widget.profile.fullName.toUpperCase(),
+                _currentProfile.fullName.toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -247,14 +280,14 @@ class _TouristDashboardState extends State<TouristDashboard> {
               ),
               const SizedBox(height: 4),
               Text(
-                widget.profile.email,
+                _currentProfile.email,
                 style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _passDetail('PASSPORT NO', widget.profile.passportNo ?? 'REGISTRATION PENDING'),
+                  _passDetail('PASSPORT NO', _currentProfile.passportNo ?? 'REGISTRATION PENDING'),
                   _passDetail('STATUS', 'ACTIVE SESSION'),
                 ],
               ),
@@ -275,7 +308,8 @@ class _TouristDashboardState extends State<TouristDashboard> {
           icon: Icons.add_task_rounded,
           color: const Color(0xFF1E3A8A),
           onTap: () async {
-            await Navigator.of(context).push(
+            // Capture the boolean result when the screen closes
+            final bool? isSuccess = await Navigator.of(context).push(
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) => const VisaApplicationScreen(),
                 transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -287,7 +321,11 @@ class _TouristDashboardState extends State<TouristDashboard> {
                 },
               ),
             );
-            setState(() => _selectedIndex = 1);
+
+            // ONLY switch to the History tab if the application was successfully completed
+            if (isSuccess == true) {
+              setState(() => _selectedIndex = 1);
+            }
           },
         ),
       ],

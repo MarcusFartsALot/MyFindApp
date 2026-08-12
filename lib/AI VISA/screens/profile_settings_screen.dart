@@ -4,14 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../M400/models/profile_model.dart';
-import '../../M400/services/auth_service.dart';
-import '../../M400/screens/auth/login_screen.dart';
 import '../../core/validators/validators.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
   final ProfileModel profile;
+  final VoidCallback onProfileUpdated;
 
-  const ProfileSettingsScreen({super.key, required this.profile});
+  const ProfileSettingsScreen({
+    super.key,
+    required this.profile,
+    required this.onProfileUpdated,
+  });
 
   @override
   State<ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
@@ -27,18 +30,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   File? _newProfilePhoto;
   Uint8List? _webProfilePhoto;
-  String? _selectedLanguage;
 
   bool _isSaving = false;
   bool _hasChanges = false;
-
-  final List<String> _languages = [
-    'English',
-    'Bahasa Melayu',
-    '中文 (Chinese)',
-    '日本語 (Japanese)',
-    '한국어 (Korean)',
-  ];
 
   @override
   void initState() {
@@ -48,7 +42,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       text: widget.profile.nickname ?? widget.profile.fullName.split(' ')[0],
     );
     _emailController = TextEditingController(text: widget.profile.email);
-    _selectedLanguage = widget.profile.preferredLanguage ?? 'English';
   }
 
   @override
@@ -124,7 +117,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       await _supabase.from('profiles').update({
         'nickname': _nicknameController.text.trim(),
         'profile_image': photoUrl,
-        'preferred_language': _selectedLanguage,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.profile.id);
 
@@ -132,6 +124,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         _isSaving = false;
         _hasChanges = false;
       });
+
+      widget.onProfileUpdated();
 
       _showSnackBar("Profile details updated successfully!");
     } catch (e) {
@@ -147,7 +141,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     final confirmPwdController = TextEditingController();
 
     bool isUpdatingPwd = false;
-    bool hasValidationError = false;
 
     showDialog(
       context: context,
@@ -196,16 +189,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   onPressed: isUpdatingPwd
                       ? null
                       : () async {
-                    if (!pwdFormKey.currentState!.validate()) {
-                      setModalState(() => hasValidationError = true);
-                      _showSnackBar("Passwords do not match or do not meet security requirements.", isError: true);
-                      return;
-                    }
+                    if (!pwdFormKey.currentState!.validate()) return;
 
-                    setModalState(() {
-                      isUpdatingPwd = true;
-                      hasValidationError = false;
-                    });
+                    setModalState(() => isUpdatingPwd = true);
 
                     try {
                       await _supabase.auth.signInWithPassword(
@@ -222,10 +208,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         _showSnackBar("Your password has been changed successfully.");
                       }
                     } on AuthException catch (_) {
-                      setModalState(() {
-                        isUpdatingPwd = false;
-                        hasValidationError = true;
-                      });
+                      setModalState(() => isUpdatingPwd = false);
                       _showSnackBar("Passwords do not match or do not meet security requirements.", isError: true);
                     } catch (e) {
                       setModalState(() => isUpdatingPwd = false);
@@ -270,9 +253,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: const Text('Profile', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+      ),
       body: ListView(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
         children: [
           Form(
             key: _formKey,
@@ -302,7 +291,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 TextFormField(
                   controller: _officialNameController,
@@ -318,7 +307,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
                 TextFormField(
                   controller: _nicknameController,
@@ -329,7 +318,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   ),
                   validator: (val) => val == null || val.isEmpty ? 'Nickname cannot be empty' : null,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
                 TextFormField(
                   controller: _emailController,
@@ -341,33 +330,24 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
                 ),
+                const SizedBox(height: 24),
+
+                // 1. Change Password Button (Brought Up)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF1E3A8A)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _showChangePasswordModal,
+                    child: const Text('Change Password', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+                  ),
+                ),
                 const SizedBox(height: 12),
 
-                DropdownButtonFormField<String>(
-                  value: _selectedLanguage,
-                  decoration: InputDecoration(
-                    labelText: 'Preferred Language',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    prefixIcon: const Icon(Icons.language_rounded, color: Color(0xFF1E3A8A), size: 20),
-                  ),
-                  items: _languages.map((String lang) {
-                    return DropdownMenuItem<String>(
-                      value: lang,
-                      child: Text(lang, style: const TextStyle(fontSize: 14)),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null && newValue != _selectedLanguage) {
-                      setState(() {
-                        _selectedLanguage = newValue;
-                      });
-                      _markAsChanged();
-                    }
-                  },
-                ),
-                const SizedBox(height: 20),
-
-                // Save Changes Button
+                // 2. Save Profile Changes Button (Moved Below)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -383,50 +363,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         : const Text('Save Profile Changes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 ),
-                const SizedBox(height: 10),
-
-                // Change Password Button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Color(0xFF1E3A8A)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: _showChangePasswordModal,
-                    child: const Text('Change Password', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Sign Out Button (Prominently displayed)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Color(0xFFDC2626)),
-                      backgroundColor: const Color(0xFFFEF2F2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: () async {
-                      await AuthService().signOut();
-                      if (context.mounted) {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                              (route) => false,
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC2626)),
-                    label: const Text(
-                      'Sign Out',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
               ],
             ),
           ),

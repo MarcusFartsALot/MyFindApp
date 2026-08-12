@@ -29,7 +29,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
   Future<void> _fetchVisaHistory() async {
     setState(() => _isLoading = true);
     try {
-      // Updated query to fetch ALL comprehensive relational tables
       final response = await _supabase
           .from('visa_applications')
           .select('''
@@ -54,7 +53,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showSnackBar("Unable to query history records. Please try again.", isError: true);
+        _showSnackBar("Unable to query history records.", isError: true);
       }
     }
   }
@@ -71,7 +70,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
           ? app['submitted_at'].toString().split('T')[0]
           : 'N/A';
 
-      // Extract all relational data
       final applicant = _extractMap(app['applicant_information']);
       final employment = _extractMap(app['employment_information']);
       final financial = _extractMap(app['financial_information']);
@@ -85,14 +83,12 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
 
       final pdf = pw.Document();
 
-      // Use MultiPage for comprehensive report
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(32),
           build: (pw.Context context) {
             return [
-              // Header
               pw.Header(
                 level: 0,
                 child: pw.Column(
@@ -104,8 +100,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
                 ),
               ),
               pw.SizedBox(height: 12),
-
-              // Metadata
               pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -139,28 +133,46 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfSectionTitle("2. APPLICANT INFORMATION"),
               _buildPdfRow("Full Name:", applicant?['full_name']),
               _buildPdfRow("Passport No:", applicant?['passport_number']),
-              _buildPdfRow("Passport Expiry:", applicant?['passport_expiry_date']),
+              _buildPdfRow("Passport Issue Date:", applicant?['passport_issue_date']),
+              _buildPdfRow("Passport Expiry Date:", applicant?['passport_expiry_date']),
+              _buildPdfRow("Passport Issuing Country:", applicant?['passport_country']),
               _buildPdfRow("Nationality:", applicant?['nationality']),
+              _buildPdfRow("Country of Residence:", applicant?['country_of_residence']),
               _buildPdfRow("Date of Birth:", applicant?['date_of_birth']),
               _buildPdfRow("Gender:", applicant?['gender']),
+              _buildPdfRow("Marital Status:", applicant?['marital_status']),
+              _buildPdfRow("Education Level:", applicant?['education_level']),
+              _buildPdfRow("Occupation:", applicant?['occupation']),
               _buildPdfRow("Phone:", applicant?['phone']),
               _buildPdfRow("Email:", applicant?['email']),
+              _buildPdfRow("Emergency Contact Name:", applicant?['emergency_contact_name']),
+              _buildPdfRow("Emergency Contact Phone:", applicant?['emergency_contact_phone']),
+              _buildPdfRow("Emergency Relationship:", applicant?['emergency_relationship']),
               pw.SizedBox(height: 16),
 
               // 3. Employment Information
               _buildPdfSectionTitle("3. EMPLOYMENT INFORMATION"),
-              _buildPdfRow("Status:", employment?['employment_status']),
-              _buildPdfRow("Company:", employment?['company_name']),
+              _buildPdfRow("Employment Status:", employment?['employment_status']),
+              _buildPdfRow("Company Name:", employment?['company_name']),
+              _buildPdfRow("Company Address:", employment?['company_address']),
+              _buildPdfRow("Company Phone:", employment?['company_phone']),
               _buildPdfRow("Job Title:", employment?['job_title']),
+              _buildPdfRow("Years Employed:", employment?['years_employed']?.toString()),
               _buildPdfRow("Monthly Income (USD):", employment?['monthly_income']?.toString()),
+              _buildPdfRow("Annual Income (USD):", employment?['annual_income']?.toString()),
               pw.SizedBox(height: 16),
 
               // 4. Financial Information
               _buildPdfSectionTitle("4. FINANCIAL INFORMATION"),
               _buildPdfRow("Bank Name:", financial?['bank_name']),
               _buildPdfRow("Account Balance (USD):", financial?['account_balance']?.toString()),
+              _buildPdfRow("Monthly Expenses (USD):", financial?['monthly_expense']?.toString()),
               _buildPdfRow("Possess Credit Card:", _formatBool(financial?['has_credit_card'])),
               _buildPdfRow("Sponsor Required:", _formatBool(financial?['sponsor_required'])),
+              _buildPdfRow("Sponsor Name:", financial?['sponsor_name']),
+              _buildPdfRow("Sponsor Relationship:", financial?['sponsor_relationship']),
+              _buildPdfRow("Sponsor Phone:", financial?['sponsor_phone']),
+              _buildPdfRow("Sponsor Email:", financial?['sponsor_email']),
               pw.SizedBox(height: 16),
 
               // 5. Travel Information
@@ -168,12 +180,23 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfRow("Purpose of Visit:", travel?['purpose_of_visit']),
               _buildPdfRow("Intended Destination:", travel?['intended_destination']),
               _buildPdfRow("Arrival Date:", travel?['arrival_date']),
+              _buildPdfRow("Departure Date:", travel?['departure_date']),
+              _buildPdfRow("Visa Expiry Date:", travel?['visa_expiry_date']),
               _buildPdfRow("Accommodation / Hotel:", travel?['hotel_name']),
+              _buildPdfRow("Hotel Address:", travel?['hotel_address']),
+              _buildPdfRow("Accommodation Type:", travel?['accommodation_type']),
+              _buildPdfRow("Airline:", travel?['airline']),
+              _buildPdfRow("Flight Number:", travel?['flight_number']),
               _buildPdfRow("Return Ticket Secured:", _formatBool(travel?['return_ticket'])),
+              _buildPdfRow("Travel Insurance Purchased:", _formatBool(travel?['travel_insurance'])),
               pw.SizedBox(height: 16),
 
               // 6. Travel History
               _buildPdfSectionTitle("6. TRAVEL HISTORY DECLARATION"),
+              _buildPdfRow("Last Country Visited:", history?['country_visited']),
+              _buildPdfRow("Past Arrival Date:", history?['arrival_date']),
+              _buildPdfRow("Past Departure Date:", history?['departure_date']),
+              _buildPdfRow("Past Visit Purpose:", history?['visit_purpose']),
               _buildPdfRow("Previous Visit to Malaysia:", _formatBool(history?['previous_malaysia_visit'])),
               _buildPdfRow("Previous Overstay Record:", _formatBool(history?['previous_overstay'])),
               _buildPdfRow("Previous Deportation:", _formatBool(history?['previous_deportation'])),
@@ -190,7 +213,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
 
       _showSnackBar("Your PDF visa report has been downloaded successfully!");
     } catch (e) {
-      _showSnackBar("Error generating PDF report. Please try again later.", isError: true);
+      _showSnackBar("Error generating PDF report.", isError: true);
     }
   }
 
@@ -207,7 +230,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(width: 150, child: pw.Text(label, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
+          pw.SizedBox(width: 170, child: pw.Text(label, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10))),
           pw.Expanded(child: pw.Text(value?.toString() ?? 'N/A', style: const pw.TextStyle(fontSize: 10))),
         ],
       ),
@@ -239,11 +262,11 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
-          : _applications.isEmpty
-          ? _buildEmptyState()
-          : _buildHistoryList(),
-    );
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
+                : _applications.isEmpty
+                ? _buildEmptyState()
+                : _buildHistoryList(),
+          );
   }
 
   Widget _buildEmptyState() {
@@ -268,7 +291,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              "You have no visa application history yet. Click 'Start New Visa Application' on the Home tab to begin.",
+              "You haven't submitted any visa applications yet. Head over to Overview to start a new application.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
             ),
@@ -284,7 +307,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
       color: const Color(0xFF1E3A8A),
       child: ListView.builder(
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         itemCount: _applications.length,
         itemBuilder: (context, index) {
           final app = _applications[index];
@@ -303,11 +326,18 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
           final double successRate = 100.0 - riskScore;
 
           return Container(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: ExpansionTile(
               shape: const Border(),
@@ -356,17 +386,18 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
                       _infoRow('Destination', travel?['intended_destination'] ?? 'N/A'),
                       _infoRow('Transaction ID', txnId),
                       _infoRow('AI Risk Level', prediction?['risk_level'] ?? 'N/A'),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                             side: const BorderSide(color: Color(0xFF1E3A8A)),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           onPressed: () => _downloadPdfReport(app),
                           icon: const Icon(Icons.picture_as_pdf_outlined, size: 16, color: Color(0xFF1E3A8A)),
-                          label: const Text('Download Official PDF', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 12)),
+                          label: const Text('Download Official PDF', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 13)),
                         ),
                       ),
                     ],
@@ -387,7 +418,15 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-          Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
