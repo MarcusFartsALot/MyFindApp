@@ -125,6 +125,13 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         _hasChanges = false;
       });
 
+      await _supabase.from('notifications').insert({
+        'user_id': widget.profile.id,
+        'title': 'Profile Updated',
+        'message': 'Your personal details, photo, or security preferences were successfully updated on the system.',
+        'type': 'Activity',
+      });
+
       widget.onProfileUpdated();
 
       _showSnackBar("Profile details updated successfully!");

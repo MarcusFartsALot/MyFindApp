@@ -127,6 +127,14 @@ class DatabaseService {
         'risk_level': aiResult['risk_level'], 'recommendation': aiResult['recommendation'], 'prediction_reason': aiResult['prediction_reason'],
       });
 
+      // 10. NEW: Automatic Activity Log for the Notification System!
+      await _supabase.from('notifications').insert({
+        'user_id': userId,
+        'title': 'Visa Application Submitted',
+        'message': 'Your VM2026 application for destination $destination has been successfully submitted and AI pre-screened. Payment of MYR $paymentAmount received.',
+        'type': 'Activity',
+      });
+
       return appId;
     } catch (e) {
       rethrow;

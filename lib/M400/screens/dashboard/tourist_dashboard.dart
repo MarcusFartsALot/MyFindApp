@@ -5,6 +5,7 @@ import '../../models/profile_model.dart';
 import '../../../AI VISA/screens/visa_history_screen.dart';
 import '../../../AI VISA/screens/visa_application_screen.dart';
 import '../../../AI VISA/screens/me_screen.dart';
+import '../../../AI VISA/screens/notifications_screen.dart';
 
 class TouristDashboard extends StatefulWidget {
   final ProfileModel profile;
@@ -18,11 +19,35 @@ class TouristDashboard extends StatefulWidget {
 class _TouristDashboardState extends State<TouristDashboard> {
   int _selectedIndex = 0;
   late ProfileModel _currentProfile;
+  int _unreadNotifications = 0; // Tracks unread notifications count
 
   @override
   void initState() {
     super.initState();
     _currentProfile = widget.profile;
+    _fetchUnreadNotifications();
+  }
+
+  /// Fetches unread notification count for the badge
+  Future<void> _fetchUnreadNotifications() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final response = await Supabase.instance.client
+          .from('notifications')
+          .select('id')
+          .eq('user_id', _currentProfile.id)
+          .eq('is_read', false);
+
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = response.length;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching unread notifications: $e");
+    }
   }
 
   /// Real-time profile state refresh logic
@@ -42,6 +67,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
           _currentProfile = ProfileModel.fromRecords(profileData, null);
         });
       }
+      _fetchUnreadNotifications(); // Refresh badge counter
     } catch (e) {
       debugPrint("Error refreshing live profile: $e");
     }
@@ -108,6 +134,57 @@ class _TouristDashboardState extends State<TouristDashboard> {
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.white,
+        actions: [
+          // Notification Bell Icon with Red Counter Badge
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.notifications_outlined,
+                    color: Color(0xFF0F172A),
+                    size: 26,
+                  ),
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => NotificationsScreen(profile: _currentProfile),
+                      ),
+                    );
+                    _fetchUnreadNotifications(); // Reset badge after viewing
+                  },
+                ),
+                if (_unreadNotifications > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDC2626),
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '$_unreadNotifications',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1.0),
           child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
@@ -162,7 +239,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
               activeIcon: Icon(Icons.person_rounded),
-              label: 'Me', // Renamed to 'Me'
+              label: 'Me',
             ),
           ],
         ),
@@ -321,6 +398,9 @@ class _TouristDashboardState extends State<TouristDashboard> {
                 },
               ),
             );
+
+            // Refresh unread notifications upon return
+            _fetchUnreadNotifications();
 
             // ONLY switch to the History tab if the application was successfully completed
             if (isSuccess == true) {
