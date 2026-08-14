@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/validators/validators.dart';
-import '../../services/auth_service.dart';
+import 'package:my_find/core/validators/validators.dart';
+import 'package:my_find/M400/services/auth_service.dart';
 import '../router/role_router.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';

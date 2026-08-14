@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../models/profile_model.dart';
-
-import '../../../AI VISA/screens/visa_history_screen.dart';
-import '../../../AI VISA/screens/visa_application_screen.dart';
-import '../../../AI VISA/screens/me_screen.dart';
-import '../../../AI VISA/screens/notifications_screen.dart';
+import 'package:my_find/M400/models/profile_model.dart';
+import 'package:my_find/AI VISA/screens/visa_history_screen.dart';
+import 'package:my_find/AI VISA/screens/visa_application_screen.dart';
+import 'package:my_find/AI VISA/screens/me_screen.dart';
+import 'package:my_find/AI VISA/screens/notifications_screen.dart';
 
 class TouristDashboard extends StatefulWidget {
   final ProfileModel profile;

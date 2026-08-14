@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/validators/validators.dart';
-import '../../services/auth_service.dart';
+import 'package:my_find/core/validators/validators.dart';
+import 'package:my_find/M400/services/auth_service.dart';
 
 /// Reached after a first login with an identity-number password or through a
 /// Supabase password-recovery deep link. Both flows already have a session.

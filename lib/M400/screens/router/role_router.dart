@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../models/profile_model.dart';
-import '../../services/auth_service.dart';
+import 'package:my_find/M400/models/profile_model.dart';
+import 'package:my_find/M400/services/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../dashboard/citizen_dashboard.dart';
 import '../dashboard/tourist_dashboard.dart';

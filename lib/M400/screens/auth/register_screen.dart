@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/validators/validators.dart';
-import '../../services/registration_service.dart';
-import '../../widgets/identity_document_capture.dart';
+import 'package:my_find/core/validators/validators.dart';
+import 'package:my_find/M400/services/registration_service.dart';
+import 'package:my_find/M400/widgets/identity_document_capture.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
