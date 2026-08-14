@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/ai_service.dart';
 import '../services/database_service.dart';
@@ -22,6 +23,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   String? _pickedFileName;
   String _uploadedFileUrl = "";
   bool _isUploadingDoc = false;
+  bool _isLoadingData = true;
 
   // 1. Applicant Info
   final _nameCtrl = TextEditingController();
@@ -101,6 +103,64 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
 
   final _aiService = AiService();
   final _dbService = DatabaseService();
+  final _supabase = Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreFilledData();
+  }
+
+  /// Automatically fetch and pre-fill fields based on registered profile and tourist details
+  Future<void> _loadPreFilledData() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => _isLoadingData = false);
+        return;
+      }
+
+      // 1. Fetch from Profiles Table
+      final profileData = await _supabase
+          .from('profiles')
+          .select()
+          .eq('auth_id', user.id)
+          .maybeSingle();
+
+      if (profileData != null) {
+        _nameCtrl.text = profileData['full_name'] ?? '';
+        _emailCtrl.text = profileData['email'] ?? '';
+        _phoneCtrl.text = profileData['phone_number'] ?? '';
+        _nationalityCtrl.text = profileData['nationality'] ?? '';
+
+        // 2. Fetch from Tourists Table using the matching profile_id
+        final touristData = await _supabase
+            .from('tourists')
+            .select()
+            .eq('profile_id', profileData['id'])
+            .maybeSingle();
+
+        if (touristData != null) {
+          _passportCtrl.text = touristData['passport_number'] ?? '';
+          _passCountryCtrl.text = touristData['passport_issuing_country'] ?? '';
+          _residenceCtrl.text = touristData['country_of_residence'] ?? '';
+
+          if (touristData['passport_issue_date'] != null) {
+            _passIssueCtrl.text = touristData['passport_issue_date'].toString();
+          }
+          if (touristData['passport_expiry_date'] != null) {
+            _passExpiryCtrl.text = touristData['passport_expiry_date'].toString();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading pre-filled data: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingData = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -228,7 +288,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     );
   }
 
-  /// Logical Date Validator
   bool _validateLogicalDates() {
     // Passport Issue vs Expiry
     DateTime? issue = DateTime.tryParse(_passIssueCtrl.text);
@@ -322,7 +381,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     setState(() => _processState = AppProcessState.aiProcessing);
 
     try {
-      // Construct complete structured application payload for AI evaluation
       final Map<String, dynamic> fullApplicationData = {
         "applicant_information": {
           "full_name": _nameCtrl.text.trim(),
@@ -391,12 +449,10 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         "document_attached": _pickedFileName != null,
       };
 
-      // Run Gemini evaluation on the complete payload
       final aiResult = await _aiService.evaluateApplication(
         fullApplicationData: fullApplicationData,
       );
 
-      // Save full application to database
       await _dbService.submitVisaApplication(
         fullName: _nameCtrl.text, passportNo: _passportCtrl.text, passportIssueDate: _passIssueCtrl.text,
         passportExpiryDate: _passExpiryCtrl.text, passportCountry: _passCountryCtrl.text, nationality: _nationalityCtrl.text,
@@ -474,6 +530,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   }
 
   Widget _buildBodyContent() {
+    if (_isLoadingData) return const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)));
     if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Verifying Gateway Credentials...", Icons.lock_outline, isSpinner: true);
     if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Authorized (MYR 150.00)", Icons.check_circle_rounded, isSuccess: true);
     if (_processState == AppProcessState.aiProcessing) return _buildStatusView("Gemini AI Calculating Risk Probability...", Icons.memory, isSpinner: true);
@@ -554,7 +611,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A)),
                   onPressed: () {
-                    // Inject real-time logical date checking before stepping forward
                     if (_validateLogicalDates()) {
                       details.onStepContinue!();
                     }
@@ -587,15 +643,9 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _passCountryCtrl, decoration: const InputDecoration(labelText: 'Passport Issuing Country'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _nationalityCtrl, decoration: const InputDecoration(labelText: 'Nationality*'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _residenceCtrl, decoration: const InputDecoration(labelText: 'Country of Residence'))),
-
-            // Replaced Gender text field with Selection Boxes
             _buildSelectionBox('Gender', ['Male', 'Female', 'Other'], _selectedGender, (val) => setState(() => _selectedGender = val)),
-
             _buildDateField('Date of Birth', _dobCtrl),
-
-            // Replaced Marital Status text field with Selection Boxes
             _buildSelectionBox('Marital Status', ['Single', 'Couple', 'Married'], _selectedMaritalStatus, (val) => setState(() => _selectedMaritalStatus = val)),
-
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _eduCtrl, decoration: const InputDecoration(labelText: 'Education Level'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _occupCtrl, decoration: const InputDecoration(labelText: 'Occupation'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email Address'))),

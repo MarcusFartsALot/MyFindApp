@@ -19,7 +19,7 @@ class TouristDashboard extends StatefulWidget {
 class _TouristDashboardState extends State<TouristDashboard> {
   int _selectedIndex = 0;
   late ProfileModel _currentProfile;
-  int _unreadNotifications = 0; // Tracks unread notifications count
+  int _unreadNotifications = 0;
 
   @override
   void initState() {
@@ -28,7 +28,6 @@ class _TouristDashboardState extends State<TouristDashboard> {
     _fetchUnreadNotifications();
   }
 
-  /// Fetches unread notification count for the badge
   Future<void> _fetchUnreadNotifications() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -50,7 +49,6 @@ class _TouristDashboardState extends State<TouristDashboard> {
     }
   }
 
-  /// Real-time profile state refresh logic
   Future<void> _refreshProfile() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -67,7 +65,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
           _currentProfile = ProfileModel.fromRecords(profileData, null);
         });
       }
-      _fetchUnreadNotifications(); // Refresh badge counter
+      _fetchUnreadNotifications();
     } catch (e) {
       debugPrint("Error refreshing live profile: $e");
     }
@@ -135,7 +133,6 @@ class _TouristDashboardState extends State<TouristDashboard> {
         elevation: 0,
         backgroundColor: Colors.white,
         actions: [
-          // Notification Bell Icon with Red Counter Badge
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: Stack(
@@ -153,7 +150,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
                         builder: (_) => NotificationsScreen(profile: _currentProfile),
                       ),
                     );
-                    _fetchUnreadNotifications(); // Reset badge after viewing
+                    _fetchUnreadNotifications();
                   },
                 ),
                 if (_unreadNotifications > 0)
@@ -316,36 +313,6 @@ class _TouristDashboardState extends State<TouristDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.flight_takeoff_rounded, color: Colors.white70, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'MALAYSIA DIGITAL PASS',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          letterSpacing: 1.5,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    width: 32,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade400,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(Icons.qr_code, size: 16, color: Colors.black87),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
               Text(
                 _currentProfile.fullName.toUpperCase(),
                 style: const TextStyle(
@@ -385,7 +352,6 @@ class _TouristDashboardState extends State<TouristDashboard> {
           icon: Icons.add_task_rounded,
           color: const Color(0xFF1E3A8A),
           onTap: () async {
-            // Capture the boolean result when the screen closes
             final bool? isSuccess = await Navigator.of(context).push(
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) => const VisaApplicationScreen(),
@@ -399,10 +365,8 @@ class _TouristDashboardState extends State<TouristDashboard> {
               ),
             );
 
-            // Refresh unread notifications upon return
             _fetchUnreadNotifications();
 
-            // ONLY switch to the History tab if the application was successfully completed
             if (isSuccess == true) {
               setState(() => _selectedIndex = 1);
             }

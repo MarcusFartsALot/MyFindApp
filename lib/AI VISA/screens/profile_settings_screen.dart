@@ -34,6 +34,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   bool _isSaving = false;
   bool _hasChanges = false;
 
+  // Tourist Details from M100
+  bool _isLoadingTourist = true;
+  Map<String, dynamic>? _touristData;
+
   @override
   void initState() {
     super.initState();
@@ -42,6 +46,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       text: widget.profile.nickname ?? widget.profile.fullName.split(' ')[0],
     );
     _emailController = TextEditingController(text: widget.profile.email);
+
+    _fetchTouristDetails();
   }
 
   @override
@@ -50,6 +56,27 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     _nicknameController.dispose();
     _emailController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchTouristDetails() async {
+    try {
+      final data = await _supabase
+          .from('tourists')
+          .select()
+          .eq('profile_id', widget.profile.id)
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _touristData = data;
+          _isLoadingTourist = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingTourist = false);
+      }
+    }
   }
 
   void _markAsChanged() {
@@ -128,7 +155,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       await _supabase.from('notifications').insert({
         'user_id': widget.profile.id,
         'title': 'Profile Updated',
-        'message': 'Your personal details, photo, or security preferences were successfully updated on the system.',
+        'message': 'Your personal details or photo were successfully updated.',
         'type': 'Activity',
       });
 
@@ -157,7 +184,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           builder: (context, setModalState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              title: const Text(
+                'Change Password',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              ),
               content: Form(
                 key: pwdFormKey,
                 child: Column(
@@ -216,14 +246,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       }
                     } on AuthException catch (_) {
                       setModalState(() => isUpdatingPwd = false);
-                      _showSnackBar("Passwords do not match or do not meet security requirements.", isError: true);
+                      _showSnackBar("Invalid current password or criteria not met.", isError: true);
                     } catch (e) {
                       setModalState(() => isUpdatingPwd = false);
                       _showSnackBar("System Error.", isError: true);
                     }
                   },
                   child: isUpdatingPwd
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
                       : const Text('Update Password', style: TextStyle(color: Colors.white)),
                 ),
               ],
@@ -231,6 +265,62 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           },
         );
       },
+    );
+  }
+
+  void _showPassportPreview(String passportUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Passport Document',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF0F172A)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 4.0,
+                child: Image.network(
+                  passportUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const SizedBox(
+                      height: 250,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => const Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Center(
+                      child: Text('Unable to load passport document image.', style: TextStyle(color: Color(0xFF94A3B8))),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -256,12 +346,64 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     return null;
   }
 
+  Widget _buildReadOnlyField(String label, String value, {IconData? icon}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: const Color(0xFF64748B)),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value.isNotEmpty ? value : 'Not provided',
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_outline, size: 16, color: Color(0xFF94A3B8)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Exact column match for passport image from SQL schema
+    String? passportUrl = _touristData?['passport_front_url'];
+
+    // FIX: If the URL is a relative path instead of a full HTTP link, convert it to a Supabase public URL.
+    if (passportUrl != null && passportUrl.isNotEmpty && !passportUrl.startsWith('http')) {
+      try {
+        passportUrl = _supabase.storage.from('registration-documents').getPublicUrl(passportUrl);
+      } catch (_) {
+        // Fallback in case of storage parsing error
+      }
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
+        title: const Text(
+          'Profile & Tourist Details',
+          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
@@ -273,32 +415,43 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
           Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Profile Avatar Picker
                 Center(
                   child: Stack(
                     alignment: Alignment.bottomRight,
                     children: [
                       CircleAvatar(
-                        radius: 42,
+                        radius: 44,
                         backgroundColor: const Color(0xFFE2E8F0),
                         backgroundImage: _getAvatarImage(),
                         child: _getAvatarImage() == null
-                            ? const Icon(Icons.person, size: 42, color: Color(0xFF94A3B8))
+                            ? const Icon(Icons.person, size: 44, color: Color(0xFF94A3B8))
                             : null,
                       ),
                       GestureDetector(
                         onTap: _pickProfilePhoto,
                         child: Container(
                           padding: const EdgeInsets.all(7),
-                          decoration: const BoxDecoration(color: Color(0xFF1E3A8A), shape: BoxShape.circle),
-                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 15),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF1E3A8A),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                         ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
+
+                // Account Information Section
+                const Text(
+                  'ACCOUNT DETAILS',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                ),
+                const SizedBox(height: 10),
 
                 TextFormField(
                   controller: _officialNameController,
@@ -307,7 +460,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     _showSnackBar("Official name cannot be changed as it must match your identity documents.", isError: true);
                   },
                   decoration: InputDecoration(
-                    labelText: 'Official Name',
+                    labelText: 'Official Full Name',
                     filled: true,
                     fillColor: const Color(0xFFF1F5F9),
                     suffixIcon: const Icon(Icons.lock_outline, color: Color(0xFF94A3B8), size: 18),
@@ -320,7 +473,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   controller: _nicknameController,
                   onChanged: (_) => _markAsChanged(),
                   decoration: InputDecoration(
-                    labelText: 'Nickname',
+                    labelText: 'Preferred Nickname',
+                    filled: true,
+                    fillColor: Colors.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   validator: (val) => val == null || val.isEmpty ? 'Nickname cannot be empty' : null,
@@ -334,12 +489,172 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     labelText: 'Email Address',
                     filled: true,
                     fillColor: const Color(0xFFF1F5F9),
+                    suffixIcon: const Icon(Icons.lock_outline, color: Color(0xFF94A3B8), size: 18),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-                // 1. Change Password Button (Brought Up)
+                // Tourist Registration Details (Mapped exactly to tourists table)
+                const Text(
+                  'TOURIST REGISTRATION INFORMATION',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                ),
+                const SizedBox(height: 10),
+
+                if (_isLoadingTourist)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (_touristData == null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: const Text(
+                      'No tourist registration record linked to this account.',
+                      style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    ),
+                  )
+                else ...[
+                    // Only map fields that actually exist in public.tourists
+                    _buildReadOnlyField(
+                      'Passport Number',
+                      _touristData?['passport_number']?.toString() ?? 'N/A',
+                      icon: Icons.badge_outlined,
+                    ),
+                    _buildReadOnlyField(
+                      'Passport Issuing Country',
+                      _touristData?['passport_issuing_country']?.toString() ?? 'N/A',
+                      icon: Icons.public_outlined,
+                    ),
+                    _buildReadOnlyField(
+                      'Country of Residence',
+                      _touristData?['country_of_residence']?.toString() ?? 'N/A',
+                      icon: Icons.home_work_outlined,
+                    ),
+                    _buildReadOnlyField(
+                      'Passport Issue Date',
+                      _touristData?['passport_issue_date']?.toString() ?? 'N/A',
+                      icon: Icons.calendar_today_outlined,
+                    ),
+                    _buildReadOnlyField(
+                      'Passport Expiry Date',
+                      _touristData?['passport_expiry_date']?.toString() ?? 'N/A',
+                      icon: Icons.calendar_month_outlined,
+                    ),
+                    _buildReadOnlyField(
+                      'Verification Status',
+                      (_touristData?['verification_status']?.toString() ?? 'N/A').toUpperCase(),
+                      icon: Icons.verified_user_outlined,
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Uploaded Passport Document Preview Section
+                    const Text(
+                      'UPLOADED PASSPORT DOCUMENT',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
+                    ),
+                    const SizedBox(height: 10),
+
+                    if (passportUrl != null && passportUrl.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                              child: Image.network(
+                                passportUrl,
+                                height: 160,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 120,
+                                  color: const Color(0xFFF1F5F9),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    'Document preview unavailable',
+                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                          _touristData?['verification_status'] == 'approved' ? Icons.verified_user_rounded : Icons.pending_actions_rounded,
+                                          color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                                          size: 18
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        _touristData?['verification_status'] == 'approved' ? 'Identity Verified' : 'Verification Pending',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706)
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () => _showPassportPreview(passportUrl!),
+                                    icon: const Icon(Icons.zoom_in_rounded, size: 16, color: Color(0xFF1E3A8A)),
+                                    label: const Text(
+                                      'View Full Document',
+                                      style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Color(0xFF94A3B8), size: 18),
+                            SizedBox(width: 8),
+                            Text(
+                              'No passport document uploaded on file.',
+                              style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+
+                const SizedBox(height: 28),
+
+                // Account Security & Actions
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
@@ -349,12 +664,14 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: _showChangePasswordModal,
-                    child: const Text('Change Password', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+                    child: const Text(
+                      'Change Password',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
 
-                // 2. Save Profile Changes Button (Moved Below)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -366,8 +683,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     ),
                     onPressed: _hasChanges && !_isSaving ? _saveProfileChanges : null,
                     child: _isSaving
-                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Save Profile Changes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                        ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                        : const Text(
+                      'Save Profile Changes',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
                   ),
                 ),
               ],
