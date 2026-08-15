@@ -531,9 +531,12 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
 
   Widget _buildBodyContent() {
     if (_isLoadingData) return const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)));
-    if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Verifying Gateway Credentials...", Icons.lock_outline, isSpinner: true);
-    if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Authorized (MYR 150.00)", Icons.check_circle_rounded, isSuccess: true);
-    if (_processState == AppProcessState.aiProcessing) return _buildStatusView("Gemini AI Calculating Risk Probability...", Icons.memory, isSpinner: true);
+    if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Verifying Payment Gateway Credentials", Icons.lock_outline, isSpinner: true);
+    if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Successful (MYR 150.00)", Icons.check_circle_rounded, isSuccess: true);
+
+    // NEW: Render the custom AI Progress UI when AI is calculating
+    if (_processState == AppProcessState.aiProcessing) return const _AiProgressView();
+
     if (_processState == AppProcessState.completed) return _buildCompletedResult();
     return _buildStepperForm();
   }
@@ -565,7 +568,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
           child: Column(
             children: [
-              const Text("PASSPORT VALIDITY SCORE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 1)),
+              const Text("VISA APPLICATION SUCCESSFUL RATE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 1)),
               const SizedBox(height: 8),
               Text("${_successRate.toStringAsFixed(1)}%", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A))),
               const SizedBox(height: 12),
@@ -577,7 +580,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), padding: const EdgeInsets.symmetric(vertical: 16)),
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text("Return to Dashboard", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          child: const Text("Return to Applications History", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         ),
       ],
     );
@@ -760,6 +763,104 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           ]),
         ),
       ],
+    );
+  }
+}
+
+/// NEW: Custom widget to display the animated AI calculating UI.
+class _AiProgressView extends StatefulWidget {
+  const _AiProgressView({Key? key}) : super(key: key);
+
+  @override
+  State<_AiProgressView> createState() => _AiProgressViewState();
+}
+
+class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rotates smoothly to cycle the rainbow gradient colors around the screen
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            // Full screen subtle rotating rainbow effect
+            gradient: SweepGradient(
+              colors: [
+                Colors.red.withOpacity(0.1),
+                Colors.orange.withOpacity(0.1),
+                Colors.yellow.withOpacity(0.1),
+                Colors.green.withOpacity(0.1),
+                Colors.blue.withOpacity(0.1),
+                Colors.purple.withOpacity(0.1),
+                Colors.red.withOpacity(0.1),
+              ],
+              transform: GradientRotation(_controller.value * 2 * 3.1415926535),
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Inner glowing rainbow mask over the central AI icon
+                ShaderMask(
+                  shaderCallback: (bounds) => SweepGradient(
+                    colors: const [Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
+                    transform: GradientRotation(_controller.value * 2 * 3.1415926535),
+                  ).createShader(bounds),
+                  child: const Icon(Icons.memory_rounded, size: 80, color: Colors.white),
+                ),
+                const SizedBox(height: 24),
+                const Text('AI Calculating Risk Probability', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                const SizedBox(height: 8),
+                const Text('Scanning vectors and securing payload...', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                const SizedBox(height: 40),
+
+                // Animated tracking progress bar to simulate completion
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 50.0),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.0, end: 0.98),
+                    duration: const Duration(seconds: 8), // Standard wait simulation time for AI engine
+                    builder: (context, value, child) {
+                      return Column(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: value,
+                              minHeight: 12,
+                              backgroundColor: const Color(0xFFE2E8F0),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1E3A8A)),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text('${(value * 100).toInt()}% Completed', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
