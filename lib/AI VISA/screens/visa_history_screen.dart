@@ -94,8 +94,8 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text("MALAYSIA IMMIGRATION SERVICE", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-                    pw.Text("OFFICIAL VISA PRE-SCREENING ASSESSMENT REPORT", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.Text("MALAYSIA VISA APPLICATION SERVICE", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+                    pw.Text("OFFICIAL VISA ASSESSMENT REPORT", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
                   ],
                 ),
               ),
@@ -130,7 +130,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               pw.SizedBox(height: 20),
 
               // 2. Applicant Information
-              _buildPdfSectionTitle("2. APPLICANT INFORMATION"),
+              _buildPdfSectionTitle("2. TOURIST INFORMATION"),
               _buildPdfRow("Full Name:", applicant?['full_name']),
               _buildPdfRow("Passport No:", applicant?['passport_number']),
               _buildPdfRow("Passport Issue Date:", applicant?['passport_issue_date']),
@@ -158,15 +158,15 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfRow("Company Phone:", employment?['company_phone']),
               _buildPdfRow("Job Title:", employment?['job_title']),
               _buildPdfRow("Years Employed:", employment?['years_employed']?.toString()),
-              _buildPdfRow("Monthly Income (USD):", employment?['monthly_income']?.toString()),
-              _buildPdfRow("Annual Income (USD):", employment?['annual_income']?.toString()),
+              _buildPdfRow("Monthly Income (MYR):", employment?['monthly_income']?.toString()),
+              _buildPdfRow("Annual Income (MYR):", employment?['annual_income']?.toString()),
               pw.SizedBox(height: 16),
 
               // 4. Financial Information
               _buildPdfSectionTitle("4. FINANCIAL INFORMATION"),
               _buildPdfRow("Bank Name:", financial?['bank_name']),
-              _buildPdfRow("Account Balance (USD):", financial?['account_balance']?.toString()),
-              _buildPdfRow("Monthly Expenses (USD):", financial?['monthly_expense']?.toString()),
+              _buildPdfRow("Account Balance (MYR):", financial?['account_balance']?.toString()),
+              _buildPdfRow("Monthly Expenses (MYR):", financial?['monthly_expense']?.toString()),
               _buildPdfRow("Possess Credit Card:", _formatBool(financial?['has_credit_card'])),
               _buildPdfRow("Sponsor Required:", _formatBool(financial?['sponsor_required'])),
               _buildPdfRow("Sponsor Name:", financial?['sponsor_name']),
@@ -176,7 +176,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               pw.SizedBox(height: 16),
 
               // 5. Travel Information
-              _buildPdfSectionTitle("5. TRAVEL LOGISTICS"),
+              _buildPdfSectionTitle("5. TRAVEL INFORMATION"),
               _buildPdfRow("Purpose of Visit:", travel?['purpose_of_visit']),
               _buildPdfRow("Intended Destination:", travel?['intended_destination']),
               _buildPdfRow("Arrival Date:", travel?['arrival_date']),
@@ -192,7 +192,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               pw.SizedBox(height: 16),
 
               // 6. Travel History
-              _buildPdfSectionTitle("6. TRAVEL HISTORY DECLARATION"),
+              _buildPdfSectionTitle("6. TRAVEL HISTORY"),
               _buildPdfRow("Last Country Visited:", history?['country_visited']),
               _buildPdfRow("Past Arrival Date:", history?['arrival_date']),
               _buildPdfRow("Past Departure Date:", history?['departure_date']),
@@ -380,7 +380,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
                     children: [
                       const Divider(height: 1, color: Color(0xFFE2E8F0)),
                       const SizedBox(height: 12),
-                      _infoRow('Applicant', applicant?['full_name'] ?? widget.profile.fullName),
+                      _infoRow('Tourist', applicant?['full_name'] ?? widget.profile.fullName),
                       _infoRow('Passport', applicant?['passport_number'] ?? 'N/A'),
                       _infoRow('Nationality', applicant?['nationality'] ?? 'N/A'),
                       _infoRow('Destination', travel?['intended_destination'] ?? 'N/A'),

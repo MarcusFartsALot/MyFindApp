@@ -62,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
               ),
               subtitle: const Text(
-                'View tourist details, passport & security',
+                'View & Mange Tourist Details',
                 style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
               ),
               trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),

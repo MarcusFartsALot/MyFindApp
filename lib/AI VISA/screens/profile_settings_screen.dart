@@ -121,7 +121,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     try {
       String? photoUrl = widget.profile.profileImage;
 
-      if (_webProfilePhoto != null || _newProfilePhoto != null) {
+      bool photoChanged = _webProfilePhoto != null || _newProfilePhoto != null;
+      String originalNickname = widget.profile.nickname ?? widget.profile.fullName.split(' ')[0];
+      bool nicknameChanged = _nicknameController.text.trim() != originalNickname;
+
+      if (photoChanged) {
         final String fileName =
             'tourists/${widget.profile.id}/profile_${DateTime.now().millisecondsSinceEpoch}.png';
 
@@ -152,12 +156,25 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         _hasChanges = false;
       });
 
-      await _supabase.from('notifications').insert({
-        'user_id': widget.profile.id,
-        'title': 'Profile Updated',
-        'message': 'Your personal details or photo were successfully updated.',
-        'type': 'Activity',
-      });
+      List<String> updatedItems = [];
+      if (photoChanged) updatedItems.add("profile photo");
+      if (nicknameChanged) updatedItems.add("nickname");
+
+      if (updatedItems.isNotEmpty) {
+        String specificMessage = "Your profile was updated.";
+        if (updatedItems.length == 1) {
+          specificMessage = "Your ${updatedItems[0]} was successfully updated.";
+        } else if (updatedItems.length > 1) {
+          specificMessage = "Your ${updatedItems.join(' and ')} were successfully updated.";
+        }
+
+        await _supabase.from('notifications').insert({
+          'user_id': widget.profile.id,
+          'title': 'Profile Updated',
+          'message': specificMessage,
+          'type': 'Activity',
+        });
+      }
 
       widget.onProfileUpdated();
 
@@ -175,6 +192,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     final confirmPwdController = TextEditingController();
 
     bool isUpdatingPwd = false;
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
 
     showDialog(
       context: context,
@@ -183,46 +203,110 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: const Text(
-                'Change Password',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              titlePadding: const EdgeInsets.only(left: 24, top: 24, right: 24, bottom: 8),
+              title: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 18)),
+                  SizedBox(height: 6),
+                  Text('Enter your current password and a new secure password.', style: TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.normal)),
+                ],
               ),
+              contentPadding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 8),
               content: Form(
                 key: pwdFormKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: currentPwdController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'Current Password'),
-                      validator: (val) => val == null || val.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: newPwdController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'New Password'),
-                      validator: Validators.password,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: confirmPwdController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'Confirm New Password'),
-                      validator: (val) => Validators.confirmPassword(val, newPwdController.text),
-                    ),
-                  ],
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: currentPwdController,
+                        obscureText: obscureCurrent,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          labelText: 'Current Password',
+                          labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF94A3B8), size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureCurrent ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: const Color(0xFF94A3B8), size: 18),
+                            onPressed: () => setModalState(() => obscureCurrent = !obscureCurrent),
+                          ),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1E3A8A))),
+                          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                          focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                        ),
+                        validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: newPwdController,
+                        obscureText: obscureNew,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          labelText: 'New Password',
+                          labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          prefixIcon: const Icon(Icons.vpn_key_outlined, color: Color(0xFF94A3B8), size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureNew ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: const Color(0xFF94A3B8), size: 18),
+                            onPressed: () => setModalState(() => obscureNew = !obscureNew),
+                          ),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1E3A8A))),
+                          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                          focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                        ),
+                        validator: Validators.password,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: confirmPwdController,
+                        obscureText: obscureConfirm,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          labelText: 'Confirm New Password',
+                          labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          prefixIcon: const Icon(Icons.check_circle_outline, color: Color(0xFF94A3B8), size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: const Color(0xFF94A3B8), size: 18),
+                            onPressed: () => setModalState(() => obscureConfirm = !obscureConfirm),
+                          ),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1E3A8A))),
+                          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                          focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
+                        ),
+                        validator: (val) => Validators.confirmPassword(val, newPwdController.text),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+              actionsPadding: const EdgeInsets.only(right: 24, bottom: 24, top: 16),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+                  onPressed: isUpdatingPwd ? null : () => Navigator.of(dialogContext).pop(),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A8A),
+                    disabledBackgroundColor: const Color(0xFF94A3B8),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: isUpdatingPwd
                       ? null
                       : () async {
@@ -239,6 +323,13 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       await _supabase.auth.updateUser(
                         UserAttributes(password: newPwdController.text),
                       );
+
+                      await _supabase.from('notifications').insert({
+                        'user_id': widget.profile.id,
+                        'title': 'Security Update',
+                        'message': 'Your account password has been successfully changed.',
+                        'type': 'Activity',
+                      });
 
                       if (mounted) {
                         Navigator.of(dialogContext).pop();
@@ -258,7 +349,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     height: 16,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                      : const Text('Update Password', style: TextStyle(color: Colors.white)),
+                      : const Text('Update Password', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -385,23 +476,19 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Exact column match for passport image from SQL schema
     String? passportUrl = _touristData?['passport_front_url'];
 
-    // FIX: If the URL is a relative path instead of a full HTTP link, convert it to a Supabase public URL.
     if (passportUrl != null && passportUrl.isNotEmpty && !passportUrl.startsWith('http')) {
       try {
         passportUrl = _supabase.storage.from('registration-documents').getPublicUrl(passportUrl);
-      } catch (_) {
-        // Fallback in case of storage parsing error
-      }
+      } catch (_) {}
     }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text(
-          'Profile & Tourist Details',
+          'Tourist Profile Details',
           style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
         ),
         backgroundColor: Colors.white,
@@ -417,7 +504,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Profile Avatar Picker
                 Center(
                   child: Stack(
                     alignment: Alignment.bottomRight,
@@ -446,7 +532,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Account Information Section
                 const Text(
                   'ACCOUNT DETAILS',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
@@ -495,7 +580,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // Tourist Registration Details (Mapped exactly to tourists table)
                 const Text(
                   'TOURIST REGISTRATION INFORMATION',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
@@ -524,7 +608,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     ),
                   )
                 else ...[
-                    // Only map fields that actually exist in public.tourists
                     _buildReadOnlyField(
                       'Passport Number',
                       _touristData?['passport_number']?.toString() ?? 'N/A',
@@ -558,7 +641,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
                     const SizedBox(height: 12),
 
-                    // Uploaded Passport Document Preview Section
                     const Text(
                       'UPLOADED PASSPORT DOCUMENT',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 0.5),
@@ -654,7 +736,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
                 const SizedBox(height: 28),
 
-                // Account Security & Actions
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(

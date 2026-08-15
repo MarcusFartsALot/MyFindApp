@@ -225,12 +225,12 @@ class _TouristDashboardState extends State<TouristDashboard> {
             BottomNavigationBarItem(
               icon: Icon(Icons.grid_view_rounded),
               activeIcon: Icon(Icons.grid_view_rounded),
-              label: 'Overview',
+              label: 'Home',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.assignment_outlined),
               activeIcon: Icon(Icons.assignment_rounded),
-              label: 'Applications',
+              label: 'Applications History',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
@@ -340,14 +340,14 @@ class _TouristDashboardState extends State<TouristDashboard> {
         const SizedBox(height: 28),
 
         const Text(
-          'Immigration Actions',
+          'Tourist Actions',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
         ),
         const SizedBox(height: 12),
 
         _AnimatedActionCard(
           title: 'Submit Visa Application',
-          subtitle: 'Execute AI pre-screening assessment for VM2026',
+          subtitle: 'Start Instant applying for Visa',
           icon: Icons.add_task_rounded,
           color: const Color(0xFF1E3A8A),
           onTap: () async {

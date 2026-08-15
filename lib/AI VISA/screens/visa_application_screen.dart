@@ -268,7 +268,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: label, prefixText: 'USD '),
+            decoration: InputDecoration(labelText: label, prefixText: 'MYR '),
             onChanged: (val) => setState(() {}),
           ),
           Slider(
@@ -408,13 +408,13 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           "company_phone": _compPhoneCtrl.text.trim(),
           "job_title": _jobTitleCtrl.text.trim(),
           "years_employed": _yearsEmpCtrl.text.trim(),
-          "monthly_income_usd": _monthlyIncCtrl.text.trim(),
-          "annual_income_usd": _annualIncCtrl.text.trim(),
+          "monthly_income_myr": _monthlyIncCtrl.text.trim(),
+          "annual_income_myr": _annualIncCtrl.text.trim(),
         },
         "financial_information": {
           "bank_name": _bankNameCtrl.text.trim(),
-          "account_balance_usd": _accBalCtrl.text.trim(),
-          "monthly_expenses_usd": _mthlyExpCtrl.text.trim(),
+          "account_balance_myr": _accBalCtrl.text.trim(),
+          "monthly_expenses_myr": _mthlyExpCtrl.text.trim(),
           "has_credit_card": _hasCreditCard,
           "sponsor_required": _sponsorRequired,
           "sponsor_name": _sponsorNameCtrl.text.trim(),
@@ -514,7 +514,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Visa Pre-Screening', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
+        title: const Text('Visa Application Form', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
@@ -633,7 +633,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
       },
       steps: [
         Step(
-          title: const Text('Applicant Details'),
+          title: const Text('Tourist Details'),
           isActive: _currentStep >= 0,
           content: Column(children: [
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Full Name*'))),
@@ -656,7 +656,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           ]),
         ),
         Step(
-          title: const Text('Employment Info'),
+          title: const Text('Employment Information'),
           isActive: _currentStep >= 1,
           content: Column(children: [
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _empStatusCtrl, decoration: const InputDecoration(labelText: 'Employment Status*'))),
@@ -688,7 +688,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           ]),
         ),
         Step(
-          title: const Text('Travel Logistics'),
+          title: const Text('Travel Information'),
           isActive: _currentStep >= 3,
           content: Column(children: [
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _purposeCtrl, decoration: const InputDecoration(labelText: 'Purpose of Visit'))),
@@ -733,13 +733,13 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           ]),
         ),
         Step(
-          title: const Text('Stripe Gateway Fee'),
+          title: const Text('Proceed For Payment'),
           isActive: _currentStep >= 6,
           content: Column(children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)),
-              child: const Text("Mandatory Processing Fee: MYR 150.00", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+              child: const Text("Visa Application Fee: MYR 150.00", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
             ),
             const SizedBox(height: 12),
             TextField(controller: _cardNumberCtrl, decoration: const InputDecoration(labelText: 'Card Number (16 Digits)'), keyboardType: TextInputType.number),
@@ -754,7 +754,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), padding: const EdgeInsets.symmetric(vertical: 14)),
                 onPressed: _processPaymentAndSubmit,
-                child: const Text('Authorize Payment & Run AI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text('Submit Visa Form', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ]),

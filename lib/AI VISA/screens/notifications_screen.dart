@@ -92,7 +92,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
           title: const Text(
-            'Notifications & Activity',
+            'Inbox',
             style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
           ),
           backgroundColor: Colors.white,
