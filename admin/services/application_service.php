@@ -392,4 +392,48 @@ final class ApplicationService
 
         return $identity;
     }
+
+    /**
+     * Get admin profile by auth ID
+     * 
+     * @param string $authId The auth user ID
+     * @return array<string, mixed>|null
+     */
+    public function getAdminProfile(string $authId): ?array
+    {
+        try {
+            $profiles = $this->client->asService(
+                'GET',
+                '/rest/v1/profiles?select=*&auth_id=eq.' . rawurlencode($authId) . '&limit=1'
+            );
+            
+            return (is_array($profiles) && count($profiles) > 0) ? $profiles[0] : null;
+        } catch (Throwable $e) {
+            error_log('Get admin profile error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Update admin password
+     * 
+     * @param string $authId The auth user ID
+     * @param string $newPassword New password
+     * @return bool
+     */
+    public function updateAdminPassword(string $authId, string $newPassword): bool
+    {
+        try {
+            $this->client->asService(
+                'PUT',
+                '/auth/v1/admin/users/' . rawurlencode($authId),
+                ['password' => $newPassword]
+            );
+            return true;
+        } catch (Throwable $e) {
+            error_log('Update admin password error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
 }

@@ -22,6 +22,162 @@ $offset = ($page - 1) * $perPage;
 // Status filter
 $statusFilter = $_GET['status'] ?? 'all';
 
+// =========================================================
+// Export to PDF
+// =========================================================
+if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
+    // 先获取所有数据用于导出
+    try {
+        $allPredictions = $client->asService(
+            'GET',
+            '/rest/v1/risk_predictions?select=*&order=generated_at.desc'
+        );
+        
+        $exportData = is_array($allPredictions) ? $allPredictions : [];
+        
+        // 应用过滤器
+        if ($statusFilter !== 'all') {
+            $statusMap = [
+                'pending' => 'Manual Review',
+                'approved' => 'Approve',
+                'rejected' => 'Reject'
+            ];
+            if (isset($statusMap[$statusFilter])) {
+                $exportData = array_filter($exportData, function($item) use ($statusMap, $statusFilter) {
+                    $rec = $item['recommendation'] ?? '';
+                    if ($statusFilter === 'pending') {
+                        return $rec === '' || $rec === 'Manual Review' || $rec === null;
+                    }
+                    return $rec === $statusMap[$statusFilter];
+                });
+            }
+        }
+        
+        // 统计
+        $total = count($exportData);
+        $pending = 0;
+        $approved = 0;
+        $rejected = 0;
+        foreach ($exportData as $p) {
+            $rec = $p['recommendation'] ?? '';
+            if ($rec === '' || $rec === 'Manual Review' || $rec === null) $pending++;
+            elseif ($rec === 'Approve') $approved++;
+            elseif ($rec === 'Reject') $rejected++;
+        }
+        
+        // 输出 HTML 用于打印 PDF
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Predictive Zoning Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; background: #fff; }
+                h1 { text-align: center; color: #1a1a2e; font-size: 24px; margin-bottom: 4px; }
+                .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 20px; }
+                .stats { display: flex; gap: 12px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+                .stat-item { padding: 10px 20px; border: 1px solid #ddd; border-radius: 8px; text-align: center; min-width: 80px; background: #f8fafc; }
+                .stat-number { font-size: 22px; font-weight: bold; display: block; }
+                .stat-label { font-size: 11px; color: #666; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th { background: #f0f0f0; padding: 10px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; }
+                td { padding: 8px; border: 1px solid #ddd; }
+                .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #999; border-top: 1px solid #eee; padding-top: 15px; }
+                .status-pending { color: #92400e; }
+                .status-approved { color: #065f46; }
+                .status-rejected { color: #991b1b; }
+                .risk-low { color: #065f46; }
+                .risk-medium { color: #b95f00; }
+                .risk-high { color: #b42332; }
+                @media print {
+                    body { padding: 10px; }
+                    .no-print { display: none; }
+                    th { background: #f0f0f0 !important; }
+                }
+            </style>
+        </head>
+        <body>
+            <h1>📊 Predictive Zoning Report</h1>
+            <p class="subtitle">Generated: ' . date('d M Y H:i:s') . ' | Filter: ' . ucfirst($statusFilter) . '</p>
+            
+            <div class="stats">
+                <div class="stat-item"><span class="stat-number">' . $total . '</span><span class="stat-label">Total</span></div>
+                <div class="stat-item"><span class="stat-number">' . $pending . '</span><span class="stat-label">Pending</span></div>
+                <div class="stat-item"><span class="stat-number">' . $approved . '</span><span class="stat-label">Approved</span></div>
+                <div class="stat-item"><span class="stat-number">' . $rejected . '</span><span class="stat-label">Rejected</span></div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Risk Level</th>
+                        <th>Risk Score</th>
+                        <th>Confidence</th>
+                        <th>Status</th>
+                        <th>Generated</th>
+                    </tr>
+                </thead>
+                <tbody>';
+        
+        if (empty($exportData)) {
+            echo '<tr><td colspan="6" style="text-align:center;padding:30px;color:#999;">No data found</td></tr>';
+        } else {
+            foreach ($exportData as $p) {
+                $rec = $p['recommendation'] ?? '';
+                if ($rec === '' || $rec === 'Manual Review' || $rec === null) {
+                    $status = 'Pending Review';
+                    $statusClass = 'status-pending';
+                } elseif ($rec === 'Approve') {
+                    $status = 'Approved';
+                    $statusClass = 'status-approved';
+                } else {
+                    $status = 'Rejected';
+                    $statusClass = 'status-rejected';
+                }
+                
+                $risk = $p['risk_level'] ?? 'N/A';
+                $riskClass = match($risk) {
+                    'Low' => 'risk-low',
+                    'Medium' => 'risk-medium',
+                    'High' => 'risk-high',
+                    default => ''
+                };
+                
+                echo '<tr>
+                    <td>' . substr($p['id'] ?? '', 0, 8) . '...</td>
+                    <td class="' . $riskClass . '">' . $risk . '</td>
+                    <td>' . number_format($p['risk_score'] ?? 0, 2) . '</td>
+                    <td>' . number_format($p['confidence_score'] ?? 0, 1) . '%</td>
+                    <td class="' . $statusClass . '">' . $status . '</td>
+                    <td>' . date('d M Y H:i', strtotime($p['generated_at'] ?? 'now')) . '</td>
+                </tr>';
+            }
+        }
+        
+        echo '    </tbody>
+            </table>
+            <div class="footer">MyFind System - Predictive Zoning Report | Generated by Admin Panel</div>
+            <script>
+                // 自动打印
+                window.onload = function() {
+                    window.print();
+                };
+                // 打印后关闭
+                window.onafterprint = function() {
+                    window.close();
+                };
+            </script>
+        </body>
+        </html>';
+        exit;
+    } catch (Throwable $e) {
+        // 如果导出出错，显示错误信息
+        echo '<h1>Export Error</h1><p>' . htmlspecialchars($e->getMessage()) . '</p>';
+        exit;
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Handle Approve / Reject
@@ -817,7 +973,6 @@ render_admin_start('Approve Predictive Zoning', $admin, 'dashboard');
     <!-- HEADER -->
     <section class="zoning-header">
         <div>
-            <h1><i class='bx bx-check-shield'></i> Approve Predictive Zoning</h1>
             <div class="subtitle">
                 <p>Review predictive zoning predictions and approve or reject them.</p>
                 <span class="badge-predictive">🤖 AI Predictions</span>
@@ -897,8 +1052,8 @@ render_admin_start('Approve Predictive Zoning', $admin, 'dashboard');
             <a href="?status=approved&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">✅ Approved</a>
             <a href="?status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
         </div>
-        <a href="#" class="export-btn" onclick="exportTable(); return false;">
-            <i class='bx bx-export'></i> Export
+        <a href="?status=<?= $statusFilter ?>&export=pdf" class="export-btn" target="_blank">
+            <i class='bx bx-export'></i> Export PDF
         </a>
     </div>
 
@@ -1150,7 +1305,7 @@ function showDetails(predictionId) {
         </div>
     `;
 
-    // Build footer actions - no Close button
+    // Build footer actions
     if (isPending) {
         footer.innerHTML = `
             <form method="post" style="flex: 1; min-width: 120px;" 
@@ -1198,10 +1353,6 @@ document.addEventListener('keydown', function(e) {
         closeDrawer();
     }
 });
-
-function exportTable() {
-    alert('Export functionality will be implemented here.');
-}
 </script>
 
 <?php

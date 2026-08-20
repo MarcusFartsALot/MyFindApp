@@ -160,92 +160,6 @@ render_admin_start(
 }
 
 /* =========================================================
-   STATS ROW - 3 CARDS
-========================================================= */
-.stats-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-}
-
-.stat-card {
-    padding: 18px 20px;
-    border-radius: 14px;
-    background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    border: 1px solid #f1f3f5;
-    transition: transform 0.2s, box-shadow 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-
-.stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.08);
-}
-
-.stat-card .stat-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    flex-shrink: 0;
-}
-
-.stat-icon-blue { background: #dbeafe; }
-.stat-icon-orange { background: #fef3c7; }
-.stat-icon-green { background: #d1fae5; }
-
-.stat-card .stat-info {
-    flex: 1;
-}
-
-.stat-card .stat-info .stat-number {
-    font-size: 24px;
-    font-weight: 700;
-    color: #1a1a2e;
-    display: block;
-    line-height: 1.2;
-}
-
-.stat-card .stat-info .stat-label {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 2px;
-    display: block;
-}
-
-.stat-card .stat-info .stat-detail {
-    font-size: 11px;
-    color: #6b7280;
-    margin-top: 2px;
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.stat-card .stat-info .stat-detail span {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.stat-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.stat-dot-blue { background: #3b82f6; }
-.stat-dot-orange { background: #f59e0b; }
-.stat-dot-green { background: #10b981; }
-
-/* =========================================================
    CARD GRID - 5 FUNCTIONS
 ========================================================= */
 .card-grid {
@@ -548,9 +462,6 @@ render_admin_start(
     .card-grid {
         grid-template-columns: repeat(3, 1fr);
     }
-    .stats-row {
-        grid-template-columns: repeat(3, 1fr);
-    }
     .chart-grid-3 {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -564,24 +475,6 @@ render_admin_start(
 
     .card-grid {
         grid-template-columns: repeat(2, 1fr);
-    }
-
-    .stats-row {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    .stat-card {
-        padding: 14px 16px;
-    }
-
-    .stat-card .stat-icon {
-        width: 36px;
-        height: 36px;
-        font-size: 18px;
-    }
-
-    .stat-card .stat-info .stat-number {
-        font-size: 20px;
     }
 
     .chart-grid-3 {
@@ -621,10 +514,6 @@ render_admin_start(
 
 @media (max-width: 480px) {
     .card-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .stats-row {
         grid-template-columns: 1fr;
     }
 
@@ -674,7 +563,6 @@ render_admin_start(
     <!-- HEADER -->
     <section class="dashboard-header">
         <div>
-            <h1><i class='bx bx-dashboard'></i> Predictive Zoning Admin Dashboard</h1>
             <p>
                 Monitor risk zones, review predictive zoning,
                 process tourist registrations, and review citizen reports.
@@ -690,39 +578,7 @@ render_admin_start(
         </div>
     <?php endif; ?>
 
-    <!-- STATS ROW -->
-    <section class="stats-row">
-        <div class="stat-card">
-            <div class="stat-icon stat-icon-blue"><i class='bx bx-map'></i></div>
-            <div class="stat-info">
-                <span class="stat-number"><?= $totalTourists ?></span>
-                <span class="stat-label">Total Tourists</span>
-                <div class="stat-detail">
-                    <span><span class="stat-dot stat-dot-blue"></span> Registered</span>
-                </div>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon stat-icon-orange"><i class='bx bx-time'></i></div>
-            <div class="stat-info">
-                <span class="stat-number"><?= $pendingCount ?></span>
-                <span class="stat-label">Pending Applications</span>
-                <div class="stat-detail">
-                    <span><span class="stat-dot stat-dot-orange"></span> <?= $touristApplicationsCount ?> Tourist · <?= $predictionsCount ?> Zoning · <?= $citizenReportsCount ?> Reports</span>
-                </div>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon stat-icon-green"><i class='bx bx-check-circle'></i></div>
-            <div class="stat-info">
-                <span class="stat-number"><?= $touristApplicationsCount ?></span>
-                <span class="stat-label">Pending Tourists</span>
-                <div class="stat-detail">
-                    <span><span class="stat-dot stat-dot-green"></span> Awaiting approval</span>
-                </div>
-            </div>
-        </div>
-    </section>
+    <!-- STATS ROW - 已删除 -->
 
     <!-- CARD GRID - 5 FUNCTIONS -->
     <section class="card-grid" aria-label="Dashboard functions">
@@ -779,7 +635,6 @@ render_admin_start(
     <section class="chart-section">
         <div class="chart-header">
             <h2><i class='bx bx-stats'></i> Module Status Distribution</h2>
-            <span class="chart-badge">3 modules · Doughnut + Bar</span>
         </div>
         <div class="chart-grid-3">
 

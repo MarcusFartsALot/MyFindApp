@@ -75,11 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $reports = [];
 $totalReports = 0;
 $pendingCount = 0;
-$investigatingCount = 0;
+$rejectedCount = 0;
 $resolvedCount = 0;
 
 // Get Supabase URL for building image URLs
-$supabaseUrl = rtrim(getenv('SUPABASE_URL') ?: '', '/');
+$supabaseUrl = 'https://kfvhnpkkwxipschhlouk.supabase.co';
 
 try {
     $allReports = $client->asService(
@@ -95,9 +95,9 @@ try {
             $statusLower = strtolower($status);
             if ($statusLower === 'pending review' || $statusLower === 'pending') {
                 $pendingCount++;
-            } elseif ($statusLower === 'under investigation' || $statusLower === 'investigating') {
-                $investigatingCount++;
-            } elseif ($statusLower === 'validated' || $statusLower === 'rejected' || $statusLower === 'resolved') {
+            } elseif ($statusLower === 'rejected') {
+                $rejectedCount++;
+            } elseif ($statusLower === 'validated' || $statusLower === 'resolved') {
                 $resolvedCount++;
             }
         }
@@ -108,7 +108,7 @@ try {
     if ($statusFilter !== 'all') {
         $statusMap = [
             'pending' => 'Pending Review',
-            'investigating' => 'Under Investigation',
+            'rejected' => 'Rejected',
             'resolved' => 'Validated'
         ];
         if (isset($statusMap[$statusFilter])) {
@@ -123,17 +123,34 @@ try {
     if (!is_array($reports)) {
         $reports = [];
     }
+
+    // ✅ 按 urgency_level 排序（Emergency → High → Normal）
+    usort($reports, function($a, $b) {
+        $urgencyOrder = [
+            'Emergency' => 0,
+            'High' => 1,
+            'Normal' => 2
+        ];
+        
+        $urgencyA = $a['urgency_level'] ?? 'Normal';
+        $urgencyB = $b['urgency_level'] ?? 'Normal';
+        
+        $orderA = $urgencyOrder[$urgencyA] ?? 2;
+        $orderB = $urgencyOrder[$urgencyB] ?? 2;
+        
+        return $orderA - $orderB;
+    });
     
     // Process media_paths to generate accessible image URLs
     foreach ($reports as &$report) {
         if (isset($report['media_paths']) && is_array($report['media_paths'])) {
-            $mediaUrls = [];
-            $bucketName = 'incident-reports';
-            foreach ($report['media_paths'] as $path) {
-                $url = $supabaseUrl . '/storage/v1/object/public/' . $bucketName . '/' . ltrim($path, '/');
-                $mediaUrls[] = $url;
-            }
-            $report['media_urls'] = $mediaUrls;
+            $report['media_urls'] = array_map(function($path) use ($supabaseUrl) {
+                $filename = basename($path);
+                $bucketName = 'incident-evidence';
+                $filePath = 'Image/' . $filename;
+                
+                return $supabaseUrl . '/storage/v1/object/public/' . $bucketName . '/' . rawurlencode($filePath);
+            }, $report['media_paths']);
         }
     }
     unset($report);
@@ -253,7 +270,7 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 
 .stat-total .stat-number { color: #1a1a2e; }
 .stat-pending .stat-number { color: #f59e0b; }
-.stat-investigating .stat-number { color: #3b82f6; }
+.stat-rejected .stat-number { color: #ef4444; }
 .stat-resolved .stat-number { color: #10b981; }
 
 /* =========================================================
@@ -308,10 +325,10 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     border-color: #f59e0b;
 }
 
-.filter-btn.active-investigating {
-    background: #3b82f6;
+.filter-btn.active-rejected {
+    background: #ef4444;
     color: white;
-    border-color: #3b82f6;
+    border-color: #ef4444;
 }
 
 .filter-btn.active-resolved {
@@ -408,19 +425,14 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     color: #92400e;
 }
 
-.status-investigation {
-    background: #dbeafe;
-    color: #1e40af;
+.status-rejected {
+    background: #fee2e2;
+    color: #991b1b;
 }
 
 .status-validated {
     background: #d1fae5;
     color: #065f46;
-}
-
-.status-rejected {
-    background: #fee2e2;
-    color: #991b1b;
 }
 
 /* =========================================================
@@ -952,13 +964,12 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     <!-- HEADER -->
     <section class="report-header">
         <div>
-            <h1><i class='bx bx-report'></i> Approve Citizen Reports</h1>
             <div class="subtitle">
                 <p>Review submitted citizen reports and validate or reject them.</p>
                 <span class="badge-reports">📋 Citizen Reports</span>
             </div>
         </div>
-        <a href="dashboard.php" class="btn-filter btn-filter-outline" style="padding:8px 20px;border:1px solid #e5e7eb;border-radius:8px;text-decoration:none;color:#4b5563;font-size:13px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;font-weight:500;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
+        <a href="admin_dashboard.php" class="btn-filter btn-filter-outline" style="padding:8px 20px;border:1px solid #e5e7eb;border-radius:8px;text-decoration:none;color:#4b5563;font-size:13px;display:inline-flex;align-items:center;gap:6px;transition:all 0.2s;font-weight:500;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='transparent'">
             <i class='bx bx-arrow-back'></i> Dashboard
         </a>
     </section>
@@ -997,10 +1008,10 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
             <span class="stat-number"><?= $pendingCount ?></span>
             <span class="stat-label">Pending Review</span>
         </div>
-        <div class="stat-card stat-investigating">
-            <span class="stat-icon">🔍</span>
-            <span class="stat-number"><?= $investigatingCount ?></span>
-            <span class="stat-label">Investigating</span>
+        <div class="stat-card stat-rejected">
+            <span class="stat-icon">❌</span>
+            <span class="stat-number"><?= $rejectedCount ?></span>
+            <span class="stat-label">Rejected</span>
         </div>
         <div class="stat-card stat-resolved">
             <span class="stat-icon">✅</span>
@@ -1014,12 +1025,9 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
         <div class="filter-group">
             <a href="?status=all&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
             <a href="?status=pending&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">⏳ Pending</a>
-            <a href="?status=investigating&page=1" class="filter-btn <?= $statusFilter === 'investigating' ? 'active-investigating' : '' ?>">🔍 Investigating</a>
+            <a href="?status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
             <a href="?status=resolved&page=1" class="filter-btn <?= $statusFilter === 'resolved' ? 'active-resolved' : '' ?>">✅ Resolved</a>
         </div>
-        <a href="#" class="export-btn" onclick="exportTable(); return false;">
-            <i class='bx bx-export'></i> Export Audit
-        </a>
     </div>
 
     <!-- TABLE -->
@@ -1050,14 +1058,12 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 
                         $statusClass = match($statusLower) {
                             'pending review', 'pending' => 'status-pending',
-                            'under investigation', 'investigating' => 'status-investigation',
-                            'validated' => 'status-validated',
                             'rejected' => 'status-rejected',
+                            'validated' => 'status-validated',
                             default => 'status-pending'
                         };
 
                         $statusDisplay = match($statusLower) {
-                            'under investigation', 'investigating' => 'Investigating',
                             'validated' => 'Validated',
                             'rejected' => 'Rejected',
                             default => $status
@@ -1190,24 +1196,21 @@ function openDrawer(reportId) {
 
     // Determine status
     const statusLower = (report.status || '').toLowerCase();
-    const isPending = statusLower === 'pending review' || statusLower === 'pending' || 
-                      statusLower === 'under investigation' || statusLower === 'investigating';
+    const isPending = statusLower === 'pending review' || statusLower === 'pending';
 
     const statusClassMap = {
         'pending review': 'status-pending',
         'pending': 'status-pending',
-        'under investigation': 'status-investigation',
-        'investigating': 'status-investigation',
-        'validated': 'status-validated',
-        'rejected': 'status-rejected'
+        'rejected': 'status-rejected',
+        'validated': 'status-validated'
     };
     const statusClass = statusClassMap[statusLower] || 'status-pending';
 
     const statusDisplayMap = {
-        'under investigation': 'Investigating',
-        'investigating': 'Investigating',
-        'validated': 'Validated',
-        'rejected': 'Rejected'
+        'pending review': 'Pending Review',
+        'pending': 'Pending Review',
+        'rejected': 'Rejected',
+        'validated': 'Validated'
     };
     const statusDisplay = statusDisplayMap[statusLower] || report.status || 'Pending Review';
 
@@ -1251,17 +1254,16 @@ function openDrawer(reportId) {
         `;
     }
 
-    // Generate Evidence HTML
+    // ✅ 修复：使用 media_urls 而不是 media_paths
     let evidenceHtml = '';
-    if (report.media_paths && report.media_paths.length > 0) {
+    if (report.media_urls && report.media_urls.length > 0) {
         evidenceHtml = `
             <hr class="detail-divider">
             <div class="detail-section">
-                <span class="detail-label">📎 Evidence (${report.media_paths.length} file${report.media_paths.length > 1 ? 's' : ''})</span>
+                <span class="detail-label">📎 Evidence (${report.media_urls.length} file${report.media_urls.length > 1 ? 's' : ''})</span>
                 <div class="evidence-grid">
-                    ${report.media_paths.map((path, index) => {
-                        const fileName = path.split('/').pop();
-                        const imageUrl = supabaseUrl + '/storage/v1/object/public/incident-reports/' + encodeURIComponent(path);
+                    ${report.media_urls.map((imageUrl, index) => {
+                        const fileName = imageUrl.split('/').pop();
                         return `
                             <div class="evidence-item" onclick="openImageViewer('${imageUrl}')" title="${fileName}">
                                 <img src="${imageUrl}" 

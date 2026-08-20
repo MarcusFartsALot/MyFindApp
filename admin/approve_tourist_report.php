@@ -877,9 +877,6 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
             <a href="?status=approved&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">✅ Approved</a>
             <a href="?status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
         </div>
-        <a href="#" class="export-btn" onclick="exportTable(); return false;">
-            <i class='bx bx-export'></i> Export Report
-        </a>
     </div>
 
     <!-- TABLE -->
