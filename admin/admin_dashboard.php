@@ -122,12 +122,13 @@ render_admin_start(
 
 <style>
 /* =========================================================
-   DASHBOARD PAGE
+   DASHBOARD PAGE - MODERN DESIGN
 ========================================================= */
 .dashboard-page {
     display: flex;
     flex-direction: column;
     gap: 28px;
+    padding: 8px 0;
 }
 
 /* =========================================================
@@ -139,24 +140,41 @@ render_admin_start(
     align-items: flex-start;
     gap: 20px;
     flex-wrap: wrap;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 28px 32px;
+    border-radius: 20px;
+    color: white;
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.35);
 }
 
 .dashboard-header h1 {
     margin: 0;
     font-size: 26px;
     font-weight: 700;
-    color: #1a1a2e;
+    color: #fff;
 }
 
 .dashboard-header h1 i {
-    color: #3b82f6;
+    color: #fff;
+    opacity: 0.9;
 }
 
 .dashboard-header p {
     margin: 6px 0 0;
-    opacity: .7;
+    opacity: 0.85;
     font-size: 14px;
     max-width: 600px;
+    color: #fff;
+}
+
+.dashboard-header .header-badge {
+    background: rgba(255,255,255,0.2);
+    backdrop-filter: blur(10px);
+    padding: 8px 20px;
+    border-radius: 30px;
+    font-size: 13px;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.15);
 }
 
 /* =========================================================
@@ -164,47 +182,61 @@ render_admin_start(
 ========================================================= */
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
 }
 
 .metric-card {
-    padding: 20px 18px;
-    border-radius: 14px;
+    padding: 22px 18px;
+    border-radius: 16px;
     background: white;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     border: 1px solid #f1f3f5;
     text-decoration: none;
     color: #1a1a2e;
-    transition: all 0.25s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     text-align: center;
     cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.metric-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    opacity: 0;
+    transition: opacity 0.3s ease;
 }
 
 .metric-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 35px rgba(0,0,0,0.08);
+    transform: translateY(-6px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.10);
     border-color: #d1d5db;
 }
 
+.metric-card:hover::after {
+    opacity: 1;
+}
+
 .metric-card .card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 24px;
-    margin: 0 auto 10px auto;
+    margin: 0 auto 12px auto;
+    transition: transform 0.3s ease;
 }
 
-.metric-card .card-content span {
-    display: block;
-    font-size: 11px;
-    color: #6b7280;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+.metric-card:hover .card-icon {
+    transform: scale(1.08);
 }
 
 .metric-card .card-content strong {
@@ -219,28 +251,29 @@ render_admin_start(
     display: block;
     font-size: 12px;
     color: #6b7280;
-    margin-top: 2px;
+    margin-top: 4px;
 }
 
 /* =========================================================
-   CHART SECTION - Doughnut + Bar Chart
+   CHART SECTION
 ========================================================= */
 .chart-section {
     background: white;
-    border-radius: 14px;
+    border-radius: 16px;
     border: 1px solid #f1f3f5;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     overflow: hidden;
 }
 
 .chart-header {
-    padding: 16px 20px;
+    padding: 18px 24px;
     border-bottom: 1px solid #f1f3f5;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
+    background: #fafbfc;
 }
 
 .chart-header h2 {
@@ -251,14 +284,14 @@ render_admin_start(
 }
 
 .chart-header h2 i {
-    color: #3b82f6;
+    color: #667eea;
 }
 
 .chart-header .chart-badge {
     font-size: 12px;
     color: #6b7280;
-    background: #f8fafc;
-    padding: 4px 12px;
+    background: #f1f5f9;
+    padding: 4px 14px;
     border-radius: 20px;
 }
 
@@ -266,25 +299,33 @@ render_admin_start(
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
-    padding: 20px 24px 24px 24px;
+    padding: 24px;
 }
 
+/* =========================================================
+   CHART BOX - MODERN
+========================================================= */
 .chart-box {
     background: #ffffff;
-    border-radius: 12px;
-    padding: 16px 18px 20px 18px;
+    border-radius: 14px;
+    padding: 18px 20px 22px;
     border: 1px solid #f1f3f5;
+    transition: box-shadow 0.3s ease;
+}
+
+.chart-box:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.04);
 }
 
 .chart-box-title {
     font-size: 13px;
     font-weight: 600;
-    color: #4b5563;
-    margin-bottom: 12px;
+    color: #1a1a2e;
+    margin-bottom: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 8px;
     text-align: center;
 }
 
@@ -293,12 +334,12 @@ render_admin_start(
     font-weight: 400;
     color: #6b7280;
     background: #f1f5f9;
-    padding: 1px 8px;
-    border-radius: 10px;
+    padding: 2px 10px;
+    border-radius: 12px;
 }
 
 /* =========================================================
-   CHART SPLIT - Doughnut (Left) + Bar Chart (Right)
+   CHART SPLIT
 ========================================================= */
 .chart-split {
     display: flex;
@@ -315,7 +356,7 @@ render_admin_start(
     min-width: 0;
 }
 
-/* Doughnut Chart */
+/* Doughnut */
 .donut-wrapper {
     position: relative;
     width: 90px;
@@ -349,7 +390,7 @@ render_admin_start(
     color: #6b7280;
 }
 
-/* Bar Chart - Vertical */
+/* Bar Chart */
 .bar-chart-vertical {
     display: flex;
     align-items: flex-end;
@@ -370,14 +411,14 @@ render_admin_start(
 .bar-item .bar {
     width: 100%;
     max-width: 28px;
-    border-radius: 4px 4px 0 0;
-    transition: height 0.8s ease;
+    border-radius: 6px 6px 0 0;
+    transition: height 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     min-height: 4px;
 }
 
-.bar-item .bar-approved { background: #10b981; }
-.bar-item .bar-rejected { background: #dc3545; }
-.bar-item .bar-pending { background: #f59e0b; }
+.bar-item .bar-approved { background: linear-gradient(180deg, #34d399, #10b981); }
+.bar-item .bar-rejected { background: linear-gradient(180deg, #f87171, #dc3545); }
+.bar-item .bar-pending { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
 
 .bar-item .bar-value {
     font-size: 11px;
@@ -389,28 +430,28 @@ render_admin_start(
 .bar-item .bar-label {
     font-size: 8px;
     color: #6b7280;
-    margin-top: 3px;
+    margin-top: 4px;
     font-weight: 500;
 }
 
 /* =========================================================
-   STATS LABELS (Bottom)
+   STATS LABELS
 ========================================================= */
 .chart-stats-simple {
     display: flex;
     justify-content: center;
-    gap: 10px;
-    margin-top: 10px;
+    gap: 12px;
+    margin-top: 12px;
     font-size: 10px;
     flex-wrap: wrap;
-    padding-top: 8px;
+    padding-top: 10px;
     border-top: 1px solid #f1f3f5;
 }
 
 .chart-stats-simple .stat-item {
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
 }
 
 .chart-stats-simple .dot {
@@ -460,7 +501,7 @@ render_admin_start(
 ========================================================= */
 @media (max-width: 1024px) {
     .card-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
     }
     .chart-grid-3 {
         grid-template-columns: repeat(2, 1fr);
@@ -471,6 +512,7 @@ render_admin_start(
     .dashboard-header {
         flex-direction: column;
         align-items: flex-start;
+        padding: 20px 24px;
     }
 
     .card-grid {
@@ -563,10 +605,14 @@ render_admin_start(
     <!-- HEADER -->
     <section class="dashboard-header">
         <div>
+            <h1><i class='bx bx-grid-alt'></i> Dashboard</h1>
             <p>
                 Monitor risk zones, review predictive zoning,
                 process tourist registrations, and review citizen reports.
             </p>
+        </div>
+        <div class="header-badge">
+            <i class='bx bx-calendar'></i> <?= date('d M Y') ?>
         </div>
     </section>
 
@@ -578,12 +624,10 @@ render_admin_start(
         </div>
     <?php endif; ?>
 
-    <!-- STATS ROW - 已删除 -->
-
-    <!-- CARD GRID - 5 FUNCTIONS -->
+    <!-- CARD GRID - 4 FUNCTIONS -->
     <section class="card-grid" aria-label="Dashboard functions">
         <a class="metric-card" href="risk_map.php">
-            <div class="card-icon" style="background:#dbeafe;color:#2563eb;margin:0 auto 10px auto;">
+            <div class="card-icon" style="background:#dbeafe;color:#2563eb;">
                 <i class='bx bx-map'></i>
             </div>
             <div class="card-content">
@@ -592,7 +636,7 @@ render_admin_start(
             </div>
         </a>
         <a class="metric-card" href="approve_zoning.php">
-            <div class="card-icon" style="background:#d1fae5;color:#059669;margin:0 auto 10px auto;">
+            <div class="card-icon" style="background:#d1fae5;color:#059669;">
                 <i class='bx bx-check-shield'></i>
             </div>
             <div class="card-content">
@@ -601,7 +645,7 @@ render_admin_start(
             </div>
         </a>
         <a class="metric-card" href="approve_tourist_report.php">
-            <div class="card-icon" style="background:#fef3c7;color:#d97706;margin:0 auto 10px auto;">
+            <div class="card-icon" style="background:#fef3c7;color:#d97706;">
                 <i class='bx bx-user-plus'></i>
             </div>
             <div class="card-content">
@@ -610,21 +654,12 @@ render_admin_start(
             </div>
         </a>
         <a class="metric-card" href="approve_citizen_report.php">
-            <div class="card-icon" style="background:#fde2e5;color:#dc2626;margin:0 auto 10px auto;">
+            <div class="card-icon" style="background:#fde2e5;color:#dc2626;">
                 <i class='bx bx-flag'></i>
             </div>
             <div class="card-content">
                 <strong>Citizen Reports</strong>
                 <small>Review reports</small>
-            </div>
-        </a>
-        <a class="metric-card" href="profile.php">
-            <div class="card-icon" style="background:#e8eefc;color:#3b82f6;margin:0 auto 10px auto;">
-                <i class='bx bx-user'></i>
-            </div>
-            <div class="card-content">
-                <strong>Admin Profile</strong>
-                <small>Update settings</small>
             </div>
         </a>
     </section>
@@ -635,18 +670,16 @@ render_admin_start(
     <section class="chart-section">
         <div class="chart-header">
             <h2><i class='bx bx-stats'></i> Module Status Distribution</h2>
+            <span class="chart-badge">Real-time data</span>
         </div>
         <div class="chart-grid-3">
 
-            <!-- =====================================================
-                 Module 1: Approve Zoning
-            ===================================================== -->
+            <!-- Module 1: Approve Zoning -->
             <div class="chart-box">
                 <div class="chart-box-title">
                     🤖 Approve Zoning
                     <span class="badge-total">Total: <?= $zoningApproved + $zoningRejected + $predictionsCount ?></span>
                 </div>
-                
                 <div class="chart-split">
                     <div class="chart-split-left">
                         <div class="donut-wrapper">
@@ -677,7 +710,6 @@ render_admin_start(
                         </div>
                     </div>
                 </div>
-
                 <div class="chart-stats-simple">
                     <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $zoningApproved ?></span><span class="stat-label">Approved</span></span>
                     <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $zoningRejected ?></span><span class="stat-label">Rejected</span></span>
@@ -685,15 +717,12 @@ render_admin_start(
                 </div>
             </div>
 
-            <!-- =====================================================
-                 Module 2: Approve Tourist
-            ===================================================== -->
+            <!-- Module 2: Approve Tourist -->
             <div class="chart-box">
                 <div class="chart-box-title">
                     🛂 Approve Tourist
                     <span class="badge-total">Total: <?= $touristApproved + $touristRejected + $touristApplicationsCount ?></span>
                 </div>
-                
                 <div class="chart-split">
                     <div class="chart-split-left">
                         <div class="donut-wrapper">
@@ -724,7 +753,6 @@ render_admin_start(
                         </div>
                     </div>
                 </div>
-
                 <div class="chart-stats-simple">
                     <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $touristApproved ?></span><span class="stat-label">Approved</span></span>
                     <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $touristRejected ?></span><span class="stat-label">Rejected</span></span>
@@ -732,15 +760,12 @@ render_admin_start(
                 </div>
             </div>
 
-            <!-- =====================================================
-                 Module 3: Approve Citizen Report
-            ===================================================== -->
+            <!-- Module 3: Approve Citizen Report -->
             <div class="chart-box">
                 <div class="chart-box-title">
                     📋 Approve Citizen Report
                     <span class="badge-total">Total: <?= $citizenValidated + $citizenRejected + $citizenReportsCount ?></span>
                 </div>
-                
                 <div class="chart-split">
                     <div class="chart-split-left">
                         <div class="donut-wrapper">
@@ -771,24 +796,10 @@ render_admin_start(
                         </div>
                     </div>
                 </div>
-
-                <!-- Citizen report stats display -->
                 <div class="chart-stats-simple">
-                    <span class="stat-item">
-                        <span class="dot dot-approved"></span>
-                        <span class="stat-number"><?= $citizenValidated ?></span>
-                        <span class="stat-label">Validated</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="dot dot-rejected"></span>
-                        <span class="stat-number"><?= $citizenRejected ?></span>
-                        <span class="stat-label">Rejected</span>
-                    </span>
-                    <span class="stat-item">
-                        <span class="dot dot-pending"></span>
-                        <span class="stat-number"><?= $citizenReportsCount ?></span>
-                        <span class="stat-label">Pending</span>
-                    </span>
+                    <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $citizenValidated ?></span><span class="stat-label">Validated</span></span>
+                    <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $citizenRejected ?></span><span class="stat-label">Rejected</span></span>
+                    <span class="stat-item"><span class="dot dot-pending"></span><span class="stat-number"><?= $citizenReportsCount ?></span><span class="stat-label">Pending</span></span>
                 </div>
             </div>
 
@@ -805,9 +816,7 @@ render_admin_start(
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     
-    // =========================================================
-    // 1. Zoning Doughnut Chart
-    // =========================================================
+    // Zoning Doughnut
     const zoningCtx = document.getElementById('zoningDonut');
     if (zoningCtx) {
         new Chart(zoningCtx, {
@@ -815,11 +824,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data: {
                 labels: ['Approved', 'Rejected', 'Pending'],
                 datasets: [{
-                    data: [
-                        <?= $zoningApproved ?>,
-                        <?= $zoningRejected ?>,
-                        <?= $predictionsCount ?>
-                    ],
+                    data: [<?= $zoningApproved ?>, <?= $zoningRejected ?>, <?= $predictionsCount ?>],
                     backgroundColor: ['#10b981', '#dc3545', '#f59e0b'],
                     borderWidth: 2,
                     borderColor: '#ffffff'
@@ -829,16 +834,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 responsive: true,
                 maintainAspectRatio: true,
                 cutout: '65%',
-                plugins: {
-                    legend: { display: false }
-                }
+                plugins: { legend: { display: false } }
             }
         });
     }
 
-    // =========================================================
-    // 2. Tourist Doughnut Chart
-    // =========================================================
+    // Tourist Doughnut
     const touristCtx = document.getElementById('touristDonut');
     if (touristCtx) {
         new Chart(touristCtx, {
@@ -846,11 +847,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data: {
                 labels: ['Approved', 'Rejected', 'Pending'],
                 datasets: [{
-                    data: [
-                        <?= $touristApproved ?>,
-                        <?= $touristRejected ?>,
-                        <?= $touristApplicationsCount ?>
-                    ],
+                    data: [<?= $touristApproved ?>, <?= $touristRejected ?>, <?= $touristApplicationsCount ?>],
                     backgroundColor: ['#10b981', '#dc3545', '#f59e0b'],
                     borderWidth: 2,
                     borderColor: '#ffffff'
@@ -860,16 +857,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 responsive: true,
                 maintainAspectRatio: true,
                 cutout: '65%',
-                plugins: {
-                    legend: { display: false }
-                }
+                plugins: { legend: { display: false } }
             }
         });
     }
 
-    // =========================================================
-    // 3. Citizen Doughnut Chart
-    // =========================================================
+    // Citizen Doughnut
     const citizenCtx = document.getElementById('citizenDonut');
     if (citizenCtx) {
         new Chart(citizenCtx, {
@@ -877,11 +870,7 @@ document.addEventListener('DOMContentLoaded', function() {
             data: {
                 labels: ['Validated', 'Rejected', 'Pending'],
                 datasets: [{
-                    data: [
-                        <?= $citizenValidated ?>,
-                        <?= $citizenRejected ?>,
-                        <?= $citizenReportsCount ?>
-                    ],
+                    data: [<?= $citizenValidated ?>, <?= $citizenRejected ?>, <?= $citizenReportsCount ?>],
                     backgroundColor: ['#10b981', '#dc3545', '#f59e0b'],
                     borderWidth: 2,
                     borderColor: '#ffffff'
@@ -891,9 +880,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 responsive: true,
                 maintainAspectRatio: true,
                 cutout: '65%',
-                plugins: {
-                    legend: { display: false }
-                }
+                plugins: { legend: { display: false } }
             }
         });
     }

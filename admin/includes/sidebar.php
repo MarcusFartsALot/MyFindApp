@@ -34,39 +34,11 @@ function render_sidebar(array $admin, string $active): void
                 <span class="tooltip">New Application</span>
             </li>
             <li>
-                <a href="#" aria-label="Users">
-                    <i class='bx bx-user'></i>
-                    <span class="links_name">User</span>
-                </a>
-                <span class="tooltip">User</span>
-            </li>
-            <li>
-                <a href="#" aria-label="Messages">
-                    <i class='bx bx-chat'></i>
-                    <span class="links_name">Messages</span>
-                </a>
-                <span class="tooltip">Messages</span>
-            </li>
-            <li>
-                <a href="#" aria-label="Analytics">
-                    <i class='bx bx-pie-chart-alt-2'></i>
-                    <span class="links_name">Analytics</span>
-                </a>
-                <span class="tooltip">Analytics</span>
-            </li>
-            <li>
-                <a href="#" aria-label="File Manager">
-                    <i class='bx bx-folder'></i>
-                    <span class="links_name">File Manager</span>
-                </a>
-                <span class="tooltip">Files</span>
-            </li>
-            <li>
-                <a href="#" aria-label="Settings">
+                <a href="profile.php">
                     <i class='bx bx-cog'></i>
-                    <span class="links_name">Setting</span>
+                    <span class="links_name">Settings</span>
                 </a>
-                <span class="tooltip">Setting</span>
+                <span class="tooltip">Settings</span>
             </li>
             <li class="profile">
                 <div class="profile-details">
