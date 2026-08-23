@@ -43,25 +43,117 @@ $sessionMessage = take_flash();
     <link href="assets/html.css" rel="stylesheet">
 </head>
 <body class="login-page">
-<main class="login-card">
-    <i class='bx bx-shield-quarter login-icon'></i>
-    <h1>Administrator Login</h1>
-    <p>Sign in with your authorized Supabase administrator account.</p>
-    <?php if ($errorMessage !== null): ?>
-        <div class="alert alert-error" role="alert"><?= escape($errorMessage) ?></div>
-    <?php elseif ($sessionMessage !== null): ?>
-        <div class="alert alert-<?= escape($sessionMessage['type']) ?>" role="alert">
-            <?= escape($sessionMessage['message']) ?>
+<div class="login-page-background" aria-hidden="true"></div>
+<main class="admin-login-card">
+    <section class="admin-login-welcome" aria-labelledby="welcome-title">
+        <div class="admin-brand">
+            <span class="admin-brand-mark"><i class='bx bx-map-alt'></i></span>
+            <span>MyFind</span>
         </div>
-    <?php endif; ?>
-    <form method="post" action="admin_login.php" class="stacked-form">
-        <input type="hidden" name="csrf_token" value="<?= escape(csrf_token()) ?>">
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="username" required>
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
-        <button type="submit" class="button primary">Login</button>
-    </form>
+
+        <div class="admin-welcome-copy">
+            <span class="admin-welcome-label">Administration portal</span>
+            <h2 id="welcome-title">Welcome Back</h2>
+            <p>Manage applications and keep the MyFind community safe from one secure workspace.</p>
+        </div>
+
+        <div class="admin-security-note">
+            <i class='bx bx-shield-quarter' aria-hidden="true"></i>
+            <div>
+                <strong>Protected access</strong>
+                <span>Authorized administrators only</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-login-panel" aria-labelledby="login-title">
+        <header class="admin-login-heading">
+            <span class="admin-login-eyebrow">Secure sign in</span>
+            <h1 id="login-title">Administrator Login</h1>
+            <p>Enter your authorized administrator account details to continue.</p>
+        </header>
+
+        <?php if ($errorMessage !== null): ?>
+            <div class="alert alert-error login-alert" role="alert">
+                <i class='bx bx-error-circle' aria-hidden="true"></i>
+                <span><?= escape($errorMessage) ?></span>
+            </div>
+        <?php elseif ($sessionMessage !== null): ?>
+            <div class="alert alert-<?= escape($sessionMessage['type']) ?> login-alert" role="alert">
+                <i class='bx bx-info-circle' aria-hidden="true"></i>
+                <span><?= escape($sessionMessage['message']) ?></span>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="admin_login.php" class="admin-login-form">
+            <input type="hidden" name="csrf_token" value="<?= escape(csrf_token()) ?>">
+
+            <div class="admin-form-field">
+                <label for="email">Email address</label>
+                <div class="admin-input-wrap">
+                    <i class='bx bx-envelope' aria-hidden="true"></i>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value="<?= escape((string) ($_POST['email'] ?? '')) ?>"
+                        placeholder="admin@example.com"
+                        autocomplete="username"
+                        required
+                        autofocus
+                    >
+                </div>
+            </div>
+
+            <div class="admin-form-field">
+                <label for="password">Password</label>
+                <div class="admin-input-wrap">
+                    <i class='bx bx-lock-alt' aria-hidden="true"></i>
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Enter your password"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button
+                        type="button"
+                        class="password-toggle"
+                        aria-label="Show password"
+                        aria-pressed="false"
+                        data-password-toggle
+                    >
+                        <i class='bx bx-show' aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="button primary admin-login-submit">
+                <span>Log In</span>
+                <i class='bx bx-right-arrow-alt' aria-hidden="true"></i>
+            </button>
+        </form>
+
+        <p class="admin-login-help">
+            <i class='bx bx-lock' aria-hidden="true"></i>
+            Your session is protected and restricted to approved administrator profiles.
+        </p>
+    </section>
 </main>
+<script>
+    const passwordToggle = document.querySelector('[data-password-toggle]');
+    const passwordInput = document.getElementById('password');
+
+    passwordToggle?.addEventListener('click', () => {
+        const willShow = passwordInput.type === 'password';
+        passwordInput.type = willShow ? 'text' : 'password';
+        passwordToggle.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
+        passwordToggle.setAttribute('aria-pressed', String(willShow));
+        passwordToggle.querySelector('i')?.classList.toggle('bx-show', !willShow);
+        passwordToggle.querySelector('i')?.classList.toggle('bx-hide', willShow);
+        passwordInput.focus();
+    });
+</script>
 </body>
 </html>
