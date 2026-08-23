@@ -29,7 +29,6 @@ class _SessionGateState extends State<SessionGate> {
   @override
   void initState() {
     super.initState();
-    _isPasswordRecovery = _requiresPasswordSetup(_authService.currentUser);
     _loadCurrentProfile();
     _authSubscription = _authService.authStateChanges.listen(_handleAuthState);
     _linkSubscription = _appLinks.uriLinkStream.listen(_handleIncomingLink);
@@ -39,8 +38,7 @@ class _SessionGateState extends State<SessionGate> {
   void _handleAuthState(AuthState state) {
     if (!mounted) return;
     setState(() {
-      if (state.event == AuthChangeEvent.passwordRecovery ||
-          _requiresPasswordSetup(state.session?.user)) {
+      if (state.event == AuthChangeEvent.passwordRecovery) {
         _isPasswordRecovery = true;
       } else if (state.event == AuthChangeEvent.signedOut) {
         _isPasswordRecovery = false;
@@ -50,9 +48,6 @@ class _SessionGateState extends State<SessionGate> {
           : _authService.fetchProfile(state.session!.user.id);
     });
   }
-
-  bool _requiresPasswordSetup(User? user) =>
-      user?.userMetadata?['password_setup_required'] == true;
 
   void _handleIncomingLink(Uri uri) {
     if (!mounted) return;

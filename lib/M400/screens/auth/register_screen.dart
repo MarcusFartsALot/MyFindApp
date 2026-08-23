@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:my_find/core/validators/validators.dart';
 import 'package:my_find/M400/services/registration_service.dart';
+import 'package:my_find/M400/widgets/auth_ui.dart';
 import 'package:my_find/M400/widgets/identity_document_capture.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -98,9 +99,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Application Submitted'),
+          title: const Text('Registration submitted'),
           content: const Text(
-            'Registration application submitted successfully.\n\n'
+            'Your registration was submitted successfully.\n\n'
             'Please wait for administrator approval. If approved, sign in '
             'with your email and IC or passport number as the temporary '
             'password. You will then create a new password.',
@@ -169,157 +170,367 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     final isCitizen = _requestedRole == 'citizen';
     return Scaffold(
-      appBar: AppBar(title: const Text('Registration Application')),
+      backgroundColor: M400AuthColors.background,
+      appBar: AppBar(
+        title: const Text(
+          'Register',
+          style: TextStyle(
+            color: M400AuthColors.heading,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        backgroundColor: M400AuthColors.surface,
+        elevation: 1,
+        scrolledUnderElevation: 1,
+        iconTheme: const IconThemeData(color: M400AuthColors.heading),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
           children: [
-            Text('Apply as', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'citizen',
-                  label: Text('Citizen'),
-                  icon: Icon(Icons.badge_outlined),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Create your MyFind account',
+                      style: TextStyle(
+                        color: M400AuthColors.heading,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    const Text(
+                      'Enter your details and identity document. An administrator will review your registration before you can sign in.',
+                      style: TextStyle(
+                        color: M400AuthColors.muted,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    M400AuthCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const M400SectionTitle(
+                            icon: Icons.people_alt_outlined,
+                            title: 'Account type',
+                            subtitle:
+                                'Choose the type that matches your document.',
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _RoleChoice(
+                                  label: 'Citizen',
+                                  icon: Icons.badge_outlined,
+                                  selected: isCitizen,
+                                  onTap: () => _changeRole('citizen'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _RoleChoice(
+                                  label: 'Tourist',
+                                  icon: Icons.flight_outlined,
+                                  selected: !isCitizen,
+                                  onTap: () => _changeRole('tourist'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    M400AuthCard(
+                      child: Column(
+                        children: [
+                          const M400SectionTitle(
+                            icon: Icons.person_outline_rounded,
+                            title: 'Personal details',
+                            subtitle:
+                                'Use the same details shown on your document.',
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: _fullNameCtrl,
+                            decoration: m400InputDecoration(
+                              label: 'Full name',
+                              prefixIcon: Icons.person_outline_rounded,
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.name],
+                            validator: (value) =>
+                                value == null || value.trim().length < 2
+                                ? 'Enter your full name'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _emailCtrl,
+                            decoration: m400InputDecoration(
+                              label: 'Email address',
+                              hint: 'name@example.com',
+                              prefixIcon: Icons.email_outlined,
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.email],
+                            validator: Validators.email,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _phoneCtrl,
+                            decoration: m400InputDecoration(
+                              label: 'Phone number',
+                              prefixIcon: Icons.phone_outlined,
+                            ),
+                            keyboardType: TextInputType.phone,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [
+                              AutofillHints.telephoneNumber,
+                            ],
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Phone number is required'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _nationalityCtrl,
+                            decoration: m400InputDecoration(
+                              label: 'Nationality',
+                              prefixIcon: Icons.public_rounded,
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Nationality is required'
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isCitizen) ...[
+                      const SizedBox(height: 16),
+                      M400AuthCard(
+                        child: Column(
+                          children: [
+                            const M400SectionTitle(
+                              icon: Icons.flight_takeoff_outlined,
+                              title: 'Passport details',
+                              subtitle:
+                                  'Add the passport issue and travel dates.',
+                            ),
+                            const SizedBox(height: 20),
+                            TextFormField(
+                              controller: _passportIssuingCountryCtrl,
+                              decoration: m400InputDecoration(
+                                label: 'Passport issuing country',
+                                prefixIcon: Icons.flag_outlined,
+                              ),
+                              textCapitalization: TextCapitalization.words,
+                              textInputAction: TextInputAction.next,
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty
+                                  ? 'Passport issuing country is required'
+                                  : null,
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _passportIssueCtrl,
+                              readOnly: true,
+                              onTap: _choosePassportIssueDate,
+                              decoration: m400InputDecoration(
+                                label: 'Passport issue date (optional)',
+                                hint: 'YYYY-MM-DD',
+                                prefixIcon: Icons.calendar_month_outlined,
+                                suffixIcon: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: M400AuthColors.muted,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _passportExpiryCtrl,
+                              readOnly: true,
+                              onTap: _choosePassportExpiryDate,
+                              decoration: m400InputDecoration(
+                                label: 'Passport expiry date',
+                                hint: 'YYYY-MM-DD',
+                                prefixIcon: Icons.event_available_outlined,
+                                suffixIcon: const Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: M400AuthColors.muted,
+                                ),
+                              ),
+                              validator: (_) => _passportExpiryDate == null
+                                  ? 'Passport expiry date is required'
+                                  : null,
+                            ),
+                            const SizedBox(height: 14),
+                            TextFormField(
+                              controller: _countryOfResidenceCtrl,
+                              decoration: m400InputDecoration(
+                                label: 'Country of residence (optional)',
+                                prefixIcon: Icons.home_work_outlined,
+                              ),
+                              textCapitalization: TextCapitalization.words,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    M400AuthCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          M400SectionTitle(
+                            icon: Icons.verified_user_outlined,
+                            title: 'Identity verification',
+                            subtitle: isCitizen
+                                ? 'Enter your MyKad number and add clear photos of both sides.'
+                                : 'Enter your passport number and add a clear photo.',
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: _identityNumberCtrl,
+                            decoration: m400InputDecoration(
+                              label: isCitizen
+                                  ? 'MyKad number'
+                                  : 'Passport number',
+                              helper: isCitizen
+                                  ? '12 digits, for example 900101-14-5566'
+                                  : '6-20 letters or numbers',
+                              prefixIcon: isCitizen
+                                  ? Icons.badge_outlined
+                                  : Icons.menu_book_outlined,
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                            onChanged: (_) => setState(() {}),
+                            validator: isCitizen
+                                ? Validators.malaysianIC
+                                : Validators.passportNumber,
+                          ),
+                          const SizedBox(height: 22),
+                          IdentityDocumentCapture(
+                            key: ValueKey('${_requestedRole}_front'),
+                            requestedRole: _requestedRole,
+                            expectedIdentityNumber: _identityNumberCtrl.text,
+                            labelOverride: isCitizen
+                                ? 'MyKad front'
+                                : 'Passport front',
+                            onDocumentChanged: (document) {
+                              _document = document;
+                            },
+                          ),
+                          if (isCitizen) ...[
+                            const SizedBox(height: 24),
+                            const Divider(color: M400AuthColors.border),
+                            const SizedBox(height: 20),
+                            IdentityDocumentCapture(
+                              key: const ValueKey('citizen_back'),
+                              requestedRole: _requestedRole,
+                              labelOverride: 'MyKad back',
+                              requiresOcr: false,
+                              onDocumentChanged: (document) {
+                                _backDocument = document;
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    M400PrimaryButton(
+                      label: 'Register',
+                      icon: Icons.person_add_alt_1_rounded,
+                      isLoading: _isSubmitting,
+                      onPressed: _submit,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'By registering, you confirm that the information and documents are accurate.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: M400AuthColors.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
-                ButtonSegment(
-                  value: 'tourist',
-                  label: Text('Tourist'),
-                  icon: Icon(Icons.flight_outlined),
-                ),
-              ],
-              selected: {_requestedRole},
-              onSelectionChanged: (selection) => _changeRole(selection.first),
-            ),
-            const SizedBox(height: 20),
-            TextFormField(
-              controller: _fullNameCtrl,
-              decoration: const InputDecoration(labelText: 'Full name'),
-              textCapitalization: TextCapitalization.words,
-              validator: (value) => value == null || value.trim().length < 2
-                  ? 'Enter your full name'
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-              keyboardType: TextInputType.emailAddress,
-              validator: Validators.email,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _phoneCtrl,
-              decoration: const InputDecoration(labelText: 'Phone number'),
-              keyboardType: TextInputType.phone,
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Phone number is required'
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _nationalityCtrl,
-              decoration: const InputDecoration(labelText: 'Nationality'),
-              textCapitalization: TextCapitalization.words,
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Nationality is required'
-                  : null,
-            ),
-            if (!isCitizen) ...[
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passportIssuingCountryCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Passport issuing country',
-                ),
-                textCapitalization: TextCapitalization.words,
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Passport issuing country is required'
-                    : null,
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passportIssueCtrl,
-                readOnly: true,
-                onTap: _choosePassportIssueDate,
-                decoration: const InputDecoration(
-                  labelText: 'Passport issue date (optional)',
-                  hintText: 'YYYY-MM-DD',
-                  suffixIcon: Icon(Icons.calendar_month_outlined),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passportExpiryCtrl,
-                readOnly: true,
-                onTap: _choosePassportExpiryDate,
-                decoration: const InputDecoration(
-                  labelText: 'Passport expiry date',
-                  hintText: 'YYYY-MM-DD',
-                  suffixIcon: Icon(Icons.calendar_month_outlined),
-                ),
-                validator: (_) => _passportExpiryDate == null
-                    ? 'Passport expiry date is required'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _countryOfResidenceCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Country of residence (optional)',
-                ),
-                textCapitalization: TextCapitalization.words,
-              ),
-            ],
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _identityNumberCtrl,
-              decoration: InputDecoration(
-                labelText: isCitizen ? 'MyKad number' : 'Passport number',
-                helperText: isCitizen
-                    ? '12 digits, for example 900101-14-5566'
-                    : '6-20 letters or numbers',
-              ),
-              textCapitalization: TextCapitalization.characters,
-              validator: isCitizen
-                  ? Validators.malaysianIC
-                  : Validators.passportNumber,
-            ),
-            const SizedBox(height: 20),
-            IdentityDocumentCapture(
-              key: ValueKey('${_requestedRole}_front'),
-              requestedRole: _requestedRole,
-              labelOverride: isCitizen ? 'MyKad front' : 'Passport front',
-              onDocumentChanged: (document) {
-                _document = document;
-              },
-            ),
-            if (isCitizen) ...[
-              const SizedBox(height: 20),
-              IdentityDocumentCapture(
-                key: const ValueKey('citizen_back'),
-                requestedRole: _requestedRole,
-                labelOverride: 'MyKad back',
-                requiresOcr: false,
-                onDocumentChanged: (document) {
-                  _backDocument = document;
-                },
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _isSubmitting ? null : _submit,
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Submit Application'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleChoice extends StatelessWidget {
+  const _RoleChoice({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? M400AuthColors.primarySoft : M400AuthColors.background,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? M400AuthColors.primary : M400AuthColors.border,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: selected ? M400AuthColors.primary : M400AuthColors.muted,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? M400AuthColors.primary
+                      : M400AuthColors.heading,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

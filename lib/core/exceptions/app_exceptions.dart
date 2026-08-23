@@ -67,6 +67,10 @@ class ExceptionMapper {
     for (final message in safeDatabaseMessages) {
       if (e.message.contains(message)) return message;
     }
+    if (e.code == 'PGRST202') {
+      return 'The registration service is not configured correctly. '
+          'Please contact support.';
+    }
     if (e.code == '23505') {
       // unique_violation
       if (e.message.contains('email')) {

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/exceptions/app_exceptions.dart';
 import '../../core/supabase_client.dart';
+import 'document_ocr_service.dart';
 import 'storage_service.dart';
 
 class RegistrationService {
@@ -44,10 +45,15 @@ class RegistrationService {
     if (requestedRole == 'citizen' && documentBackImage == null) {
       throw AppException('Please add a photo of the back of your MyKad.');
     }
-    // OCR confirms that a readable identity document was supplied, but it is
-    // not an exact identity-number validator. Camera OCR often confuses
-    // characters such as O/0 and I/1. The typed number is validated by the
-    // form/database, and the administrator compares it with the stored image.
+    if (!DocumentOcrService.identityNumberMatches(
+      extractedText: extractedText,
+      identityNumber: identityNumber,
+      requestedRole: requestedRole,
+    )) {
+      throw AppException(
+        DocumentOcrService.identityMismatchMessage(requestedRole),
+      );
+    }
     if (requestedRole == 'tourist') {
       if (passportExpiryDate == null ||
           !passportExpiryDate.isAfter(DateTime.now())) {
@@ -63,8 +69,6 @@ class RegistrationService {
         throw AppException('Enter the passport issuing country.');
       }
     }
-
-    await _ensureEmailAvailable(email);
 
     final profileId = _uuid.v4();
     final frontObjectName = requestedRole == 'citizen'
@@ -143,22 +147,4 @@ class RegistrationService {
       '${value.year.toString().padLeft(4, '0')}-'
       '${value.month.toString().padLeft(2, '0')}-'
       '${value.day.toString().padLeft(2, '0')}';
-
-  Future<void> _ensureEmailAvailable(String email) async {
-    try {
-      final available = await _client.rpc(
-        'module400_registration_email_available',
-        params: {'p_email': email.trim().toLowerCase()},
-      );
-      if (available != true) {
-        throw AppException(
-          'This email is already registered. Please log in or use another email.',
-        );
-      }
-    } on AppException {
-      rethrow;
-    } catch (error) {
-      throw ExceptionMapper.map(error);
-    }
-  }
 }

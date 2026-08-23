@@ -8,6 +8,43 @@ class DocumentOcrService {
   static const unclearImageMessage =
       'The picture is not clear enough. Please take a photo again.';
 
+  /// OCR text stays inside the application and is never presented to the
+  /// citizen or tourist. Only this boolean verification result reaches the UI.
+  static bool identityNumberMatches({
+    required String extractedText,
+    required String identityNumber,
+    required String requestedRole,
+  }) {
+    final expected = normalizeIdentityNumber(
+      identityNumber,
+      requestedRole: requestedRole,
+    );
+    if (expected.isEmpty) return false;
+
+    final normalizedOcr = requestedRole == 'citizen'
+        ? extractedText.replaceAll(RegExp(r'[^0-9]'), '')
+        : extractedText.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    return normalizedOcr.contains(expected);
+  }
+
+  static String normalizeIdentityNumber(
+    String value, {
+    required String requestedRole,
+  }) {
+    if (requestedRole == 'citizen') {
+      return value.replaceAll(RegExp(r'[^0-9]'), '');
+    }
+    return value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  static String identityMismatchMessage(String requestedRole) {
+    final label = requestedRole == 'citizen'
+        ? 'MyKad number'
+        : 'passport number';
+    return 'The $label in the photo does not match the number you entered. '
+        'Check the number or retake the photo.';
+  }
+
   Future<String> extractAndValidate({
     required File image,
     required String requestedRole,

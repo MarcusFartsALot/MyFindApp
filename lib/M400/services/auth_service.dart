@@ -11,8 +11,6 @@ class AuthService {
   User? get currentUser => _client.auth.currentUser;
   Session? get currentSession => _client.auth.currentSession;
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
-  bool get requiresPasswordSetup =>
-      currentUser?.userMetadata?['password_setup_required'] == true;
 
   Future<ProfileModel> signIn({
     required String email,
@@ -97,6 +95,18 @@ class AuthService {
         email.trim().toLowerCase(),
         redirectTo: AppConfig.passwordResetRedirectUrl,
       );
+    } on AuthException catch (error) {
+      final isEmailLimit =
+          error.statusCode?.toString() == '429' ||
+          error.message.toLowerCase().contains('email rate limit');
+      if (isEmailLimit) {
+        throw AppException(
+          'The reset-email service has reached its hourly sending limit. '
+          'Please wait up to one hour before trying again.',
+          code: 'reset_email_rate_limit',
+        );
+      }
+      throw ExceptionMapper.map(error);
     } catch (error) {
       throw ExceptionMapper.map(error);
     }
@@ -109,14 +119,7 @@ class AuthService {
           'This password reset link is invalid or has expired. Request a new link.',
         );
       }
-      await _client.auth.updateUser(
-        UserAttributes(
-          password: newPassword,
-          // UI workflow state only. Authorization continues to use the
-          // profiles role and role-table verification status protected by RLS.
-          data: {'password_setup_required': false},
-        ),
-      );
+      await _client.auth.updateUser(UserAttributes(password: newPassword));
     } on AppException {
       rethrow;
     } catch (error) {
