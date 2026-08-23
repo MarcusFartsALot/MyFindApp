@@ -35,7 +35,6 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
             employment_information(*),
             financial_information(*),
             travel_information(*),
-            travel_history(*),
             payment_transactions(*)
           ''')
           .eq('id', widget.applicationId)
@@ -64,11 +63,6 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
     return null;
   }
 
-  String _formatBool(dynamic value) {
-    if (value == null) return 'N/A';
-    return (value == true || value == 'true') ? 'Yes' : 'No';
-  }
-
   Future<void> _downloadFullPdfReport() async {
     if (_applicationData == null) return;
 
@@ -81,7 +75,6 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
       final employment = _extractMap(app['employment_information']);
       final financial = _extractMap(app['financial_information']);
       final travel = _extractMap(app['travel_information']);
-      final history = _extractMap(app['travel_history']);
       final prediction = _extractMap(app['risk_predictions']);
       final payment = _extractMap(app['payment_transactions']);
 
@@ -157,15 +150,13 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
               _buildPdfRow("Status:", employment?['employment_status']),
               _buildPdfRow("Company:", employment?['company_name']),
               _buildPdfRow("Job Title:", employment?['job_title']),
-              _buildPdfRow("Monthly Income (USD):", employment?['monthly_income']?.toString()),
+              _buildPdfRow("Monthly Income (MYR):", employment?['monthly_income']?.toString()),
               pw.SizedBox(height: 16),
 
               // 4. Financial Information
               _buildPdfSectionTitle("4. FINANCIAL INFORMATION"),
               _buildPdfRow("Bank Name:", financial?['bank_name']),
-              _buildPdfRow("Account Balance (USD):", financial?['account_balance']?.toString()),
-              _buildPdfRow("Possess Credit Card:", _formatBool(financial?['has_credit_card'])),
-              _buildPdfRow("Sponsor Required:", _formatBool(financial?['sponsor_required'])),
+              _buildPdfRow("Account Balance (MYR):", financial?['account_balance']?.toString()),
               pw.SizedBox(height: 16),
 
               // 5. Travel Information
@@ -174,15 +165,6 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
               _buildPdfRow("Intended Destination:", travel?['intended_destination']),
               _buildPdfRow("Arrival Date:", travel?['arrival_date']),
               _buildPdfRow("Accommodation / Hotel:", travel?['hotel_name']),
-              _buildPdfRow("Return Ticket Secured:", _formatBool(travel?['return_ticket'])),
-              pw.SizedBox(height: 16),
-
-              // 6. Travel History
-              _buildPdfSectionTitle("6. TRAVEL HISTORY DECLARATION"),
-              _buildPdfRow("Previous Visit to Malaysia:", _formatBool(history?['previous_malaysia_visit'])),
-              _buildPdfRow("Previous Overstay Record:", _formatBool(history?['previous_overstay'])),
-              _buildPdfRow("Previous Deportation:", _formatBool(history?['previous_deportation'])),
-              _buildPdfRow("Immigration Violations:", _formatBool(history?['immigration_violation'])),
             ];
           },
         ),

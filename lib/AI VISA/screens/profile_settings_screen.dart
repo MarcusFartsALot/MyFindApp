@@ -545,7 +545,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     _showSnackBar("Official name cannot be changed as it must match your identity documents.", isError: true);
                   },
                   decoration: InputDecoration(
-                    labelText: 'Official Full Name',
+                    labelText: 'Official Name',
                     filled: true,
                     fillColor: const Color(0xFFF1F5F9),
                     suffixIcon: const Icon(Icons.lock_outline, color: Color(0xFF94A3B8), size: 18),
@@ -558,7 +558,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   controller: _nicknameController,
                   onChanged: (_) => _markAsChanged(),
                   decoration: InputDecoration(
-                    labelText: 'Preferred Nickname',
+                    labelText: 'Nickname',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),

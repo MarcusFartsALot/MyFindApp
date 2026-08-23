@@ -347,8 +347,8 @@ class _TouristDashboardState extends State<TouristDashboard> {
         const SizedBox(height: 12),
 
         _AnimatedActionCard(
-          title: 'Submit Visa Application',
-          subtitle: 'Start Instant applying for Visa',
+          title: 'Submit Visa to AI',
+          subtitle: 'AI Check Visa Application Successful Rate',
           icon: Icons.add_task_rounded,
           color: const Color(0xFF1E3A8A),
           onTap: () async {
@@ -399,7 +399,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
               child: const Icon(Icons.upload_file_rounded, color: Color(0xFF1E3A8A), size: 22),
             ),
             title: const Text(
-              'Upload Supporting Document',
+              'Submit Visa to Admin',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
             ),
             subtitle: const Text(

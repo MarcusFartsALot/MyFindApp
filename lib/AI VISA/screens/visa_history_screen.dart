@@ -38,7 +38,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
             employment_information(*),
             financial_information(*),
             travel_information(*),
-            travel_history(*),
             payment_transactions(*)
           ''')
           .eq('user_id', widget.profile.id)
@@ -58,11 +57,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     }
   }
 
-  String _formatBool(dynamic value) {
-    if (value == null) return 'N/A';
-    return (value == true || value == 'true') ? 'Yes' : 'No';
-  }
-
   Future<void> _downloadPdfReport(Map<String, dynamic> app) async {
     try {
       final String appId = app['id'] ?? 'N/A';
@@ -74,7 +68,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
       final employment = _extractMap(app['employment_information']);
       final financial = _extractMap(app['financial_information']);
       final travel = _extractMap(app['travel_information']);
-      final history = _extractMap(app['travel_history']);
       final prediction = _extractMap(app['risk_predictions']);
       final payment = _extractMap(app['payment_transactions']);
 
@@ -167,12 +160,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfRow("Bank Name:", financial?['bank_name']),
               _buildPdfRow("Account Balance (MYR):", financial?['account_balance']?.toString()),
               _buildPdfRow("Monthly Expenses (MYR):", financial?['monthly_expense']?.toString()),
-              _buildPdfRow("Possess Credit Card:", _formatBool(financial?['has_credit_card'])),
-              _buildPdfRow("Sponsor Required:", _formatBool(financial?['sponsor_required'])),
-              _buildPdfRow("Sponsor Name:", financial?['sponsor_name']),
-              _buildPdfRow("Sponsor Relationship:", financial?['sponsor_relationship']),
-              _buildPdfRow("Sponsor Phone:", financial?['sponsor_phone']),
-              _buildPdfRow("Sponsor Email:", financial?['sponsor_email']),
               pw.SizedBox(height: 16),
 
               // 5. Travel Information
@@ -187,20 +174,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfRow("Accommodation Type:", travel?['accommodation_type']),
               _buildPdfRow("Airline:", travel?['airline']),
               _buildPdfRow("Flight Number:", travel?['flight_number']),
-              _buildPdfRow("Return Ticket Secured:", _formatBool(travel?['return_ticket'])),
-              _buildPdfRow("Travel Insurance Purchased:", _formatBool(travel?['travel_insurance'])),
-              pw.SizedBox(height: 16),
-
-              // 6. Travel History
-              _buildPdfSectionTitle("6. TRAVEL HISTORY"),
-              _buildPdfRow("Last Country Visited:", history?['country_visited']),
-              _buildPdfRow("Past Arrival Date:", history?['arrival_date']),
-              _buildPdfRow("Past Departure Date:", history?['departure_date']),
-              _buildPdfRow("Past Visit Purpose:", history?['visit_purpose']),
-              _buildPdfRow("Previous Visit to Malaysia:", _formatBool(history?['previous_malaysia_visit'])),
-              _buildPdfRow("Previous Overstay Record:", _formatBool(history?['previous_overstay'])),
-              _buildPdfRow("Previous Deportation:", _formatBool(history?['previous_deportation'])),
-              _buildPdfRow("Immigration Violations:", _formatBool(history?['immigration_violation'])),
             ];
           },
         ),
@@ -262,11 +235,11 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
-                : _applications.isEmpty
-                ? _buildEmptyState()
-                : _buildHistoryList(),
-          );
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)))
+          : _applications.isEmpty
+          ? _buildEmptyState()
+          : _buildHistoryList(),
+    );
   }
 
   Widget _buildEmptyState() {

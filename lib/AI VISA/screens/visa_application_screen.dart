@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // NEW: Required for local caching
 
 import '../services/ai_service.dart';
 import '../services/database_service.dart';
@@ -34,7 +35,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   final _nationalityCtrl = TextEditingController();
   final _residenceCtrl = TextEditingController();
   final _dobCtrl = TextEditingController();
-  final _eduCtrl = TextEditingController();
   final _occupCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -42,12 +42,47 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   final _emergPhoneCtrl = TextEditingController();
   final _emergRelCtrl = TextEditingController();
 
-  // Selection Boxes Variables
+  // Selection Boxes & Dropdown Variables
   String? _selectedGender;
   String? _selectedMaritalStatus;
+  String? _selectedEduLevel;
+  String? _selectedEmpStatus;
+  String? _selectedState;
+  String? _selectedKlZone;
+  String? _selectedAccomType;
+
+  // Dropdown Data Lists
+  final List<String> _educationLevels = [
+    'Primary School',
+    'Secondary School',
+    'Higher Education'
+  ];
+
+  final List<String> _employmentStatuses = [
+    'Full-Time Employee',
+    'Part-Time Employee',
+    'Contract Employee',
+    'Self-Employed'
+  ];
+
+  final List<String> _malaysiaStates = [
+    'Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan', 'Pahang',
+    'Penang', 'Perak', 'Perlis', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu',
+    'Kuala Lumpur', 'Labuan', 'Putrajaya'
+  ];
+
+  final List<String> _klZones = [
+    'Kepong', 'Batu', 'Wangsa Maju', 'Segambut', 'Setiawangsa', 'Titiwangsa',
+    'Bukit Bintang', 'Lembah Pantai', 'Seputeh', 'Cheras', 'Bandar Tun Razak'
+  ];
+
+  final List<String> _accomTypes = [
+    'Hotel/Motel/Rest House',
+    'Residence of Friends/Relatives',
+    'Others'
+  ];
 
   // 2. Employment Info
-  final _empStatusCtrl = TextEditingController();
   final _compNameCtrl = TextEditingController();
   final _compAddrCtrl = TextEditingController();
   final _compPhoneCtrl = TextEditingController();
@@ -55,48 +90,23 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   final _yearsEmpCtrl = TextEditingController();
   final _monthlyIncCtrl = TextEditingController();
   final _annualIncCtrl = TextEditingController();
-  final _empLetterUrlCtrl = TextEditingController();
-  final _leaveLetterUrlCtrl = TextEditingController();
 
   // 3. Financial Info
   final _bankNameCtrl = TextEditingController();
   final _accBalCtrl = TextEditingController();
   final _mthlyExpCtrl = TextEditingController();
-  bool _hasCreditCard = false;
-  bool _sponsorRequired = false;
-  final _sponsorNameCtrl = TextEditingController();
-  final _sponsorRelCtrl = TextEditingController();
-  final _sponsorPhoneCtrl = TextEditingController();
-  final _sponsorEmailCtrl = TextEditingController();
-  final _bankStmtUrlCtrl = TextEditingController();
 
   // 4. Travel Info
   final _purposeCtrl = TextEditingController();
   final _arrDateCtrl = TextEditingController();
   final _depDateCtrl = TextEditingController();
   final _visaExpCtrl = TextEditingController();
-  final _destCtrl = TextEditingController();
   final _hotelNameCtrl = TextEditingController();
   final _hotelAddrCtrl = TextEditingController();
-  final _accomTypeCtrl = TextEditingController();
   final _airlineCtrl = TextEditingController();
   final _flightNoCtrl = TextEditingController();
-  bool _returnTicket = false;
-  final _retTicketUrlCtrl = TextEditingController();
-  bool _travelIns = false;
-  final _travelInsUrlCtrl = TextEditingController();
 
-  // 5. Travel History
-  final _histCountryCtrl = TextEditingController();
-  final _histArrCtrl = TextEditingController();
-  final _histDepCtrl = TextEditingController();
-  final _histPurpCtrl = TextEditingController();
-  bool _prevVisit = false;
-  bool _prevOverstay = false;
-  bool _prevDeport = false;
-  bool _immigViol = false;
-
-  // 6. Payment
+  // 5. Payment
   final _cardNumberCtrl = TextEditingController();
   final _cardExpiryCtrl = TextEditingController();
   final _cardCvcCtrl = TextEditingController();
@@ -111,7 +121,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     _loadPreFilledData();
   }
 
-  /// Automatically fetch and pre-fill fields based on registered profile and tourist details
+  /// Automatically fetches previously saved local drafts, then overrides identity details with database values.
   Future<void> _loadPreFilledData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -120,7 +130,58 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         return;
       }
 
-      // 1. Fetch from Profiles Table
+      // --- 1. LOAD LOCAL CACHE DRAFTS FIRST ---
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'visa_draft_${user.id}';
+
+      _dobCtrl.text = prefs.getString('${cacheKey}_dob') ?? '';
+      _occupCtrl.text = prefs.getString('${cacheKey}_occup') ?? '';
+      _emergNameCtrl.text = prefs.getString('${cacheKey}_emergName') ?? '';
+      _emergPhoneCtrl.text = prefs.getString('${cacheKey}_emergPhone') ?? '';
+      _emergRelCtrl.text = prefs.getString('${cacheKey}_emergRel') ?? '';
+      _compNameCtrl.text = prefs.getString('${cacheKey}_compName') ?? '';
+      _compAddrCtrl.text = prefs.getString('${cacheKey}_compAddr') ?? '';
+      _compPhoneCtrl.text = prefs.getString('${cacheKey}_compPhone') ?? '';
+      _jobTitleCtrl.text = prefs.getString('${cacheKey}_jobTitle') ?? '';
+      _yearsEmpCtrl.text = prefs.getString('${cacheKey}_yearsEmp') ?? '';
+      _monthlyIncCtrl.text = prefs.getString('${cacheKey}_monthlyInc') ?? '';
+      _annualIncCtrl.text = prefs.getString('${cacheKey}_annualInc') ?? '';
+      _bankNameCtrl.text = prefs.getString('${cacheKey}_bankName') ?? '';
+      _accBalCtrl.text = prefs.getString('${cacheKey}_accBal') ?? '';
+      _mthlyExpCtrl.text = prefs.getString('${cacheKey}_mthlyExp') ?? '';
+      _purposeCtrl.text = prefs.getString('${cacheKey}_purpose') ?? '';
+      _arrDateCtrl.text = prefs.getString('${cacheKey}_arrDate') ?? '';
+      _depDateCtrl.text = prefs.getString('${cacheKey}_depDate') ?? '';
+      _visaExpCtrl.text = prefs.getString('${cacheKey}_visaExp') ?? '';
+      _hotelNameCtrl.text = prefs.getString('${cacheKey}_hotelName') ?? '';
+      _hotelAddrCtrl.text = prefs.getString('${cacheKey}_hotelAddr') ?? '';
+      _airlineCtrl.text = prefs.getString('${cacheKey}_airline') ?? '';
+      _flightNoCtrl.text = prefs.getString('${cacheKey}_flightNo') ?? '';
+
+      final cachedGender = prefs.getString('${cacheKey}_gender');
+      if (cachedGender != null && ['Male', 'Female', 'Other'].contains(cachedGender)) _selectedGender = cachedGender;
+
+      final cachedMarital = prefs.getString('${cacheKey}_marital');
+      if (cachedMarital != null && ['Single', 'Couple', 'Married'].contains(cachedMarital)) _selectedMaritalStatus = cachedMarital;
+
+      final cachedEdu = prefs.getString('${cacheKey}_edu');
+      if (cachedEdu != null && _educationLevels.contains(cachedEdu)) _selectedEduLevel = cachedEdu;
+
+      final cachedEmpStat = prefs.getString('${cacheKey}_empStatus');
+      if (cachedEmpStat != null && _employmentStatuses.contains(cachedEmpStat)) _selectedEmpStatus = cachedEmpStat;
+
+      final cachedState = prefs.getString('${cacheKey}_state');
+      if (cachedState != null && _malaysiaStates.contains(cachedState)) _selectedState = cachedState;
+
+      final cachedKlZone = prefs.getString('${cacheKey}_klZone');
+      if (cachedKlZone != null && _klZones.contains(cachedKlZone)) _selectedKlZone = cachedKlZone;
+
+      final cachedAccom = prefs.getString('${cacheKey}_accomType');
+      if (cachedAccom != null && _accomTypes.contains(cachedAccom)) _selectedAccomType = cachedAccom;
+      // -----------------------------------------
+
+
+      // --- 2. FETCH AND OVERWRITE IDENTITY DATA FROM DB ---
       final profileData = await _supabase
           .from('profiles')
           .select()
@@ -133,7 +194,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         _phoneCtrl.text = profileData['phone_number'] ?? '';
         _nationalityCtrl.text = profileData['nationality'] ?? '';
 
-        // 2. Fetch from Tourists Table using the matching profile_id
         final touristData = await _supabase
             .from('tourists')
             .select()
@@ -162,21 +222,63 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     }
   }
 
+  /// Saves the current text field and dropdown states directly to device cache
+  Future<void> _saveDraftDataToCache() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'visa_draft_${user.id}';
+
+      await prefs.setString('${cacheKey}_dob', _dobCtrl.text);
+      await prefs.setString('${cacheKey}_occup', _occupCtrl.text);
+      await prefs.setString('${cacheKey}_emergName', _emergNameCtrl.text);
+      await prefs.setString('${cacheKey}_emergPhone', _emergPhoneCtrl.text);
+      await prefs.setString('${cacheKey}_emergRel', _emergRelCtrl.text);
+      await prefs.setString('${cacheKey}_compName', _compNameCtrl.text);
+      await prefs.setString('${cacheKey}_compAddr', _compAddrCtrl.text);
+      await prefs.setString('${cacheKey}_compPhone', _compPhoneCtrl.text);
+      await prefs.setString('${cacheKey}_jobTitle', _jobTitleCtrl.text);
+      await prefs.setString('${cacheKey}_yearsEmp', _yearsEmpCtrl.text);
+      await prefs.setString('${cacheKey}_monthlyInc', _monthlyIncCtrl.text);
+      await prefs.setString('${cacheKey}_annualInc', _annualIncCtrl.text);
+      await prefs.setString('${cacheKey}_bankName', _bankNameCtrl.text);
+      await prefs.setString('${cacheKey}_accBal', _accBalCtrl.text);
+      await prefs.setString('${cacheKey}_mthlyExp', _mthlyExpCtrl.text);
+      await prefs.setString('${cacheKey}_purpose', _purposeCtrl.text);
+      await prefs.setString('${cacheKey}_arrDate', _arrDateCtrl.text);
+      await prefs.setString('${cacheKey}_depDate', _depDateCtrl.text);
+      await prefs.setString('${cacheKey}_visaExp', _visaExpCtrl.text);
+      await prefs.setString('${cacheKey}_hotelName', _hotelNameCtrl.text);
+      await prefs.setString('${cacheKey}_hotelAddr', _hotelAddrCtrl.text);
+      await prefs.setString('${cacheKey}_airline', _airlineCtrl.text);
+      await prefs.setString('${cacheKey}_flightNo', _flightNoCtrl.text);
+
+      await prefs.setString('${cacheKey}_gender', _selectedGender ?? '');
+      await prefs.setString('${cacheKey}_marital', _selectedMaritalStatus ?? '');
+      await prefs.setString('${cacheKey}_edu', _selectedEduLevel ?? '');
+      await prefs.setString('${cacheKey}_empStatus', _selectedEmpStatus ?? '');
+      await prefs.setString('${cacheKey}_state', _selectedState ?? '');
+      await prefs.setString('${cacheKey}_klZone', _selectedKlZone ?? '');
+      await prefs.setString('${cacheKey}_accomType', _selectedAccomType ?? '');
+    } catch (e) {
+      debugPrint("Failed saving cache: $e");
+    }
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose(); _passportCtrl.dispose(); _passIssueCtrl.dispose(); _passExpiryCtrl.dispose();
     _passCountryCtrl.dispose(); _nationalityCtrl.dispose(); _residenceCtrl.dispose();
-    _dobCtrl.dispose(); _eduCtrl.dispose(); _occupCtrl.dispose();
+    _dobCtrl.dispose(); _occupCtrl.dispose();
     _emailCtrl.dispose(); _phoneCtrl.dispose(); _emergNameCtrl.dispose(); _emergPhoneCtrl.dispose(); _emergRelCtrl.dispose();
-    _empStatusCtrl.dispose(); _compNameCtrl.dispose(); _compAddrCtrl.dispose(); _compPhoneCtrl.dispose();
+    _compNameCtrl.dispose(); _compAddrCtrl.dispose(); _compPhoneCtrl.dispose();
     _jobTitleCtrl.dispose(); _yearsEmpCtrl.dispose(); _monthlyIncCtrl.dispose(); _annualIncCtrl.dispose();
-    _empLetterUrlCtrl.dispose(); _leaveLetterUrlCtrl.dispose(); _bankNameCtrl.dispose(); _accBalCtrl.dispose();
-    _mthlyExpCtrl.dispose(); _sponsorNameCtrl.dispose(); _sponsorRelCtrl.dispose(); _sponsorPhoneCtrl.dispose();
-    _sponsorEmailCtrl.dispose(); _bankStmtUrlCtrl.dispose(); _purposeCtrl.dispose(); _arrDateCtrl.dispose();
-    _depDateCtrl.dispose(); _visaExpCtrl.dispose(); _destCtrl.dispose(); _hotelNameCtrl.dispose();
-    _hotelAddrCtrl.dispose(); _accomTypeCtrl.dispose(); _airlineCtrl.dispose(); _flightNoCtrl.dispose();
-    _retTicketUrlCtrl.dispose(); _travelInsUrlCtrl.dispose(); _histCountryCtrl.dispose(); _histArrCtrl.dispose();
-    _histDepCtrl.dispose(); _histPurpCtrl.dispose(); _cardNumberCtrl.dispose(); _cardExpiryCtrl.dispose(); _cardCvcCtrl.dispose();
+    _bankNameCtrl.dispose(); _accBalCtrl.dispose(); _mthlyExpCtrl.dispose();
+    _purposeCtrl.dispose(); _arrDateCtrl.dispose(); _depDateCtrl.dispose(); _visaExpCtrl.dispose();
+    _hotelNameCtrl.dispose(); _hotelAddrCtrl.dispose();
+    _airlineCtrl.dispose(); _flightNoCtrl.dispose();
+    _cardNumberCtrl.dispose(); _cardExpiryCtrl.dispose(); _cardCvcCtrl.dispose();
     super.dispose();
   }
 
@@ -255,6 +357,18 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     );
   }
 
+  Widget _buildDropdownField(String label, List<String> items, String? value, ValueChanged<String?> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: DropdownButtonFormField<String>(
+        decoration: InputDecoration(labelText: label),
+        value: value,
+        items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
   Widget _buildMoneyInputWithSlider(String label, TextEditingController controller, double maxVal) {
     double currentVal = double.tryParse(controller.text) ?? 0.0;
     if (currentVal > maxVal) currentVal = maxVal;
@@ -305,14 +419,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
       return false;
     }
 
-    // History Arrival vs Departure
-    DateTime? hArr = DateTime.tryParse(_histArrCtrl.text);
-    DateTime? hDep = DateTime.tryParse(_histDepCtrl.text);
-    if (hArr != null && hDep != null && hArr.isAfter(hDep)) {
-      _showSnackBar("Past Arrival Date cannot be after Past Departure Date (Step 5).", isError: true);
-      return false;
-    }
-
     return true;
   }
 
@@ -321,7 +427,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     if (_nameCtrl.text.trim().isEmpty) missing.add("Full Name (Step 1)");
     if (_passportCtrl.text.trim().isEmpty) missing.add("Passport Number (Step 1)");
     if (_nationalityCtrl.text.trim().isEmpty) missing.add("Nationality (Step 1)");
-    if (_empStatusCtrl.text.trim().isEmpty) missing.add("Employment Status (Step 2)");
+    if (_selectedEmpStatus == null) missing.add("Employment Status (Step 2)");
     return missing;
   }
 
@@ -370,6 +476,9 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   Future<void> _processPaymentAndSubmit() async {
     if (!_validatePaymentInputs()) return;
 
+    // Save final inputs to cache right before submission
+    _saveDraftDataToCache();
+
     setState(() => _processState = AppProcessState.stripeProcessing);
     await Future.delayed(const Duration(seconds: 2));
 
@@ -381,6 +490,10 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     setState(() => _processState = AppProcessState.aiProcessing);
 
     try {
+      final String intendedDestination = _selectedState == 'Kuala Lumpur' && _selectedKlZone != null
+          ? 'Kuala Lumpur - $_selectedKlZone'
+          : _selectedState ?? '';
+
       final Map<String, dynamic> fullApplicationData = {
         "applicant_information": {
           "full_name": _nameCtrl.text.trim(),
@@ -393,7 +506,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           "gender": _selectedGender ?? '',
           "date_of_birth": _dobCtrl.text.trim(),
           "marital_status": _selectedMaritalStatus ?? '',
-          "education_level": _eduCtrl.text.trim(),
+          "education_level": _selectedEduLevel ?? '',
           "occupation": _occupCtrl.text.trim(),
           "email": _emailCtrl.text.trim(),
           "phone": _phoneCtrl.text.trim(),
@@ -402,7 +515,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           "emergency_relationship": _emergRelCtrl.text.trim(),
         },
         "employment_information": {
-          "employment_status": _empStatusCtrl.text.trim(),
+          "employment_status": _selectedEmpStatus ?? '',
           "company_name": _compNameCtrl.text.trim(),
           "company_address": _compAddrCtrl.text.trim(),
           "company_phone": _compPhoneCtrl.text.trim(),
@@ -415,36 +528,18 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           "bank_name": _bankNameCtrl.text.trim(),
           "account_balance_myr": _accBalCtrl.text.trim(),
           "monthly_expenses_myr": _mthlyExpCtrl.text.trim(),
-          "has_credit_card": _hasCreditCard,
-          "sponsor_required": _sponsorRequired,
-          "sponsor_name": _sponsorNameCtrl.text.trim(),
-          "sponsor_relationship": _sponsorRelCtrl.text.trim(),
-          "sponsor_phone": _sponsorPhoneCtrl.text.trim(),
-          "sponsor_email": _sponsorEmailCtrl.text.trim(),
         },
         "travel_logistics": {
           "purpose_of_visit": _purposeCtrl.text.trim(),
           "arrival_date": _arrDateCtrl.text.trim(),
           "departure_date": _depDateCtrl.text.trim(),
           "visa_expiry_date": _visaExpCtrl.text.trim(),
-          "intended_destination": _destCtrl.text.trim(),
+          "intended_destination": intendedDestination,
           "hotel_name": _hotelNameCtrl.text.trim(),
           "hotel_address": _hotelAddrCtrl.text.trim(),
-          "accommodation_type": _accomTypeCtrl.text.trim(),
+          "accommodation_type": _selectedAccomType ?? '',
           "airline": _airlineCtrl.text.trim(),
           "flight_number": _flightNoCtrl.text.trim(),
-          "return_ticket_secured": _returnTicket,
-          "travel_insurance_purchased": _travelIns,
-        },
-        "travel_history": {
-          "last_country_visited": _histCountryCtrl.text.trim(),
-          "past_arrival_date": _histArrCtrl.text.trim(),
-          "past_departure_date": _histDepCtrl.text.trim(),
-          "past_visit_purpose": _histPurpCtrl.text.trim(),
-          "previous_malaysia_visit": _prevVisit,
-          "previous_overstay_record": _prevOverstay,
-          "previous_deportation": _prevDeport,
-          "immigration_violation": _immigViol,
         },
         "document_attached": _pickedFileName != null,
       };
@@ -457,29 +552,22 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         fullName: _nameCtrl.text, passportNo: _passportCtrl.text, passportIssueDate: _passIssueCtrl.text,
         passportExpiryDate: _passExpiryCtrl.text, passportCountry: _passCountryCtrl.text, nationality: _nationalityCtrl.text,
         countryOfResidence: _residenceCtrl.text, gender: _selectedGender ?? '', dob: _dobCtrl.text,
-        maritalStatus: _selectedMaritalStatus ?? '', educationLevel: _eduCtrl.text, occupation: _occupCtrl.text,
+        maritalStatus: _selectedMaritalStatus ?? '', educationLevel: _selectedEduLevel ?? '', occupation: _occupCtrl.text,
         email: _emailCtrl.text, phone: _phoneCtrl.text, emergencyName: _emergNameCtrl.text,
         emergencyPhone: _emergPhoneCtrl.text, emergencyRel: _emergRelCtrl.text,
 
-        employmentStatus: _empStatusCtrl.text, companyName: _compNameCtrl.text, companyAddress: _compAddrCtrl.text,
+        employmentStatus: _selectedEmpStatus ?? '', companyName: _compNameCtrl.text, companyAddress: _compAddrCtrl.text,
         companyPhone: _compPhoneCtrl.text, jobTitle: _jobTitleCtrl.text, yearsEmployed: _yearsEmpCtrl.text,
-        monthlyIncome: _monthlyIncCtrl.text, annualIncome: _annualIncCtrl.text, employerLetterUrl: _empLetterUrlCtrl.text,
-        leaveApprovalUrl: _leaveLetterUrlCtrl.text,
+        monthlyIncome: _monthlyIncCtrl.text, annualIncome: _annualIncCtrl.text,
+
 
         bankName: _bankNameCtrl.text, accountBalance: _accBalCtrl.text, monthlyExpense: _mthlyExpCtrl.text,
-        hasCreditCard: _hasCreditCard, sponsorRequired: _sponsorRequired, sponsorName: _sponsorNameCtrl.text,
-        sponsorRel: _sponsorRelCtrl.text, sponsorPhone: _sponsorPhoneCtrl.text, sponsorEmail: _sponsorEmailCtrl.text,
-        bankStatementUrl: _bankStmtUrlCtrl.text,
+
 
         purpose: _purposeCtrl.text, arrivalDate: _arrDateCtrl.text, departureDate: _depDateCtrl.text,
-        visaExpiryDate: _visaExpCtrl.text, destination: _destCtrl.text, hotelName: _hotelNameCtrl.text,
-        hotelAddress: _hotelAddrCtrl.text, accomType: _accomTypeCtrl.text, airline: _airlineCtrl.text,
-        flightNo: _flightNoCtrl.text, returnTicket: _returnTicket, returnTicketUrl: _retTicketUrlCtrl.text,
-        travelInsurance: _travelIns, travelInsuranceUrl: _travelInsUrlCtrl.text,
-
-        histCountry: _histCountryCtrl.text, histArrival: _histArrCtrl.text, histDeparture: _histDepCtrl.text,
-        histPurpose: _histPurpCtrl.text, prevVisit: _prevVisit, prevOverstay: _prevOverstay,
-        prevDeportation: _prevDeport, immigViolation: _immigViol,
+        visaExpiryDate: _visaExpCtrl.text, destination: intendedDestination, hotelName: _hotelNameCtrl.text,
+        hotelAddress: _hotelAddrCtrl.text, accomType: _selectedAccomType ?? '', airline: _airlineCtrl.text,
+        flightNo: _flightNoCtrl.text,
 
         docType: "Other", docUrl: _uploadedFileUrl,
 
@@ -519,7 +607,10 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         elevation: 1,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () {
+            _saveDraftDataToCache(); // Cache inputs upon leaving
+            Navigator.of(context).pop(false);
+          },
         ),
       ),
       body: AnimatedSwitcher(
@@ -531,12 +622,9 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
 
   Widget _buildBodyContent() {
     if (_isLoadingData) return const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)));
-    if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Verifying Payment Gateway Credentials", Icons.lock_outline, isSpinner: true);
+    if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Payment Processing", Icons.lock_outline, isSpinner: true);
     if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Successful (MYR 150.00)", Icons.check_circle_rounded, isSuccess: true);
-
-    // NEW: Render the custom AI Progress UI when AI is calculating
     if (_processState == AppProcessState.aiProcessing) return const _AiProgressView();
-
     if (_processState == AppProcessState.completed) return _buildCompletedResult();
     return _buildStepperForm();
   }
@@ -595,17 +683,19 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         setState(() => _currentStep = step);
       },
       onStepContinue: () {
-        if (_currentStep < 6) {
+        _saveDraftDataToCache(); // Cache inputs upon step progression
+        if (_currentStep < 5) {
           setState(() => _currentStep += 1);
         }
       },
       onStepCancel: () {
+        _saveDraftDataToCache(); // Cache inputs upon step regression
         if (_currentStep > 0) {
           setState(() => _currentStep -= 1);
         }
       },
       controlsBuilder: (context, details) {
-        if (_currentStep == 6) return const SizedBox.shrink();
+        if (_currentStep == 5) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.only(top: 20.0),
           child: Row(
@@ -649,7 +739,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             _buildSelectionBox('Gender', ['Male', 'Female', 'Other'], _selectedGender, (val) => setState(() => _selectedGender = val)),
             _buildDateField('Date of Birth', _dobCtrl),
             _buildSelectionBox('Marital Status', ['Single', 'Couple', 'Married'], _selectedMaritalStatus, (val) => setState(() => _selectedMaritalStatus = val)),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _eduCtrl, decoration: const InputDecoration(labelText: 'Education Level'))),
+            _buildDropdownField('Education Level', _educationLevels, _selectedEduLevel, (val) => setState(() => _selectedEduLevel = val)),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _occupCtrl, decoration: const InputDecoration(labelText: 'Occupation'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email Address'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _phoneCtrl, decoration: const InputDecoration(labelText: 'Phone Number'))),
@@ -662,7 +752,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           title: const Text('Employment Information'),
           isActive: _currentStep >= 1,
           content: Column(children: [
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _empStatusCtrl, decoration: const InputDecoration(labelText: 'Employment Status*'))),
+            _buildDropdownField('Employment Status*', _employmentStatuses, _selectedEmpStatus, (val) => setState(() => _selectedEmpStatus = val)),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _compNameCtrl, decoration: const InputDecoration(labelText: 'Company Name'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _compAddrCtrl, decoration: const InputDecoration(labelText: 'Company Address'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _compPhoneCtrl, decoration: const InputDecoration(labelText: 'Company Phone'))),
@@ -670,8 +760,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _yearsEmpCtrl, decoration: const InputDecoration(labelText: 'Years Employed'), keyboardType: TextInputType.number)),
             _buildMoneyInputWithSlider('Monthly Income', _monthlyIncCtrl, 10000000.0),
             _buildMoneyInputWithSlider('Annual Income', _annualIncCtrl, 100000000.0),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _empLetterUrlCtrl, decoration: const InputDecoration(labelText: 'Employer Letter URL'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _leaveLetterUrlCtrl, decoration: const InputDecoration(labelText: 'Leave Approval Letter URL'))),
           ]),
         ),
         Step(
@@ -681,13 +769,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _bankNameCtrl, decoration: const InputDecoration(labelText: 'Primary Bank Name'))),
             _buildMoneyInputWithSlider('Account Balance', _accBalCtrl, 100000000.0),
             _buildMoneyInputWithSlider('Monthly Expenses', _mthlyExpCtrl, 10000000.0),
-            SwitchListTile(title: const Text('Possess a Credit Card?', style: TextStyle(fontSize: 14)), value: _hasCreditCard, onChanged: (v) => setState(() => _hasCreditCard = v)),
-            SwitchListTile(title: const Text('Sponsor Required?', style: TextStyle(fontSize: 14)), value: _sponsorRequired, onChanged: (v) => setState(() => _sponsorRequired = v)),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _sponsorNameCtrl, decoration: const InputDecoration(labelText: 'Sponsor Name'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _sponsorRelCtrl, decoration: const InputDecoration(labelText: 'Sponsor Relationship'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _sponsorPhoneCtrl, decoration: const InputDecoration(labelText: 'Sponsor Phone'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _sponsorEmailCtrl, decoration: const InputDecoration(labelText: 'Sponsor Email'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _bankStmtUrlCtrl, decoration: const InputDecoration(labelText: 'Bank Statement URL'))),
           ]),
         ),
         Step(
@@ -698,35 +779,27 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             _buildDateField('Arrival Date', _arrDateCtrl),
             _buildDateField('Departure Date', _depDateCtrl),
             _buildDateField('Visa Expiry Date', _visaExpCtrl),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _destCtrl, decoration: const InputDecoration(labelText: 'Intended Destination'))),
+
+            _buildDropdownField('Intended Destination (States)', _malaysiaStates, _selectedState, (val) {
+              setState(() {
+                _selectedState = val;
+                _selectedKlZone = null;
+              });
+            }),
+
+            if (_selectedState == 'Kuala Lumpur')
+              _buildDropdownField('Kuala Lumpur Zone', _klZones, _selectedKlZone, (val) => setState(() => _selectedKlZone = val)),
+
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _hotelNameCtrl, decoration: const InputDecoration(labelText: 'Hotel Name'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _hotelAddrCtrl, decoration: const InputDecoration(labelText: 'Hotel Address'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _accomTypeCtrl, decoration: const InputDecoration(labelText: 'Accommodation Type'))),
+            _buildDropdownField('Accommodation Type', _accomTypes, _selectedAccomType, (val) => setState(() => _selectedAccomType = val)),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _airlineCtrl, decoration: const InputDecoration(labelText: 'Airline'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _flightNoCtrl, decoration: const InputDecoration(labelText: 'Flight Number'))),
-            SwitchListTile(title: const Text('Return Ticket Secured?', style: TextStyle(fontSize: 14)), value: _returnTicket, onChanged: (v) => setState(() => _returnTicket = v)),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _retTicketUrlCtrl, decoration: const InputDecoration(labelText: 'Return Ticket URL'))),
-            SwitchListTile(title: const Text('Travel Insurance Purchased?', style: TextStyle(fontSize: 14)), value: _travelIns, onChanged: (v) => setState(() => _travelIns = v)),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _travelInsUrlCtrl, decoration: const InputDecoration(labelText: 'Travel Insurance URL'))),
-          ]),
-        ),
-        Step(
-          title: const Text('Travel History'),
-          isActive: _currentStep >= 4,
-          content: Column(children: [
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _histCountryCtrl, decoration: const InputDecoration(labelText: 'Last Country Visited'))),
-            _buildDateField('Past Arrival Date', _histArrCtrl),
-            _buildDateField('Past Departure Date', _histDepCtrl),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _histPurpCtrl, decoration: const InputDecoration(labelText: 'Past Visit Purpose'))),
-            SwitchListTile(title: const Text('Previous Visit to Malaysia?', style: TextStyle(fontSize: 14)), value: _prevVisit, onChanged: (v) => setState(() => _prevVisit = v)),
-            SwitchListTile(title: const Text('Previous Overstay Record?', style: TextStyle(fontSize: 14)), value: _prevOverstay, onChanged: (v) => setState(() => _prevOverstay = v)),
-            SwitchListTile(title: const Text('Previous Deportation?', style: TextStyle(fontSize: 14)), value: _prevDeport, onChanged: (v) => setState(() => _prevDeport = v)),
-            SwitchListTile(title: const Text('Any Immigration Violations?', style: TextStyle(fontSize: 14)), value: _immigViol, onChanged: (v) => setState(() => _immigViol = v)),
           ]),
         ),
         Step(
           title: const Text('Supporting Documents'),
-          isActive: _currentStep >= 5,
+          isActive: _currentStep >= 4,
           content: Column(children: [
             OutlinedButton.icon(
               onPressed: _handleDocumentUpload,
@@ -737,12 +810,12 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         ),
         Step(
           title: const Text('Proceed For Payment'),
-          isActive: _currentStep >= 6,
+          isActive: _currentStep >= 5,
           content: Column(children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)),
-              child: const Text("Visa Application Fee: MYR 150.00", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+              child: const Text("AI Calculation Fee: MYR 150.00", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
             ),
             const SizedBox(height: 12),
             TextField(controller: _cardNumberCtrl, decoration: const InputDecoration(labelText: 'Card Number (16 Digits)'), keyboardType: TextInputType.number),
@@ -757,7 +830,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), padding: const EdgeInsets.symmetric(vertical: 14)),
                 onPressed: _processPaymentAndSubmit,
-                child: const Text('Submit Visa Form', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: const Text('Submit Visa Form to AI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ]),
@@ -767,7 +840,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   }
 }
 
-/// NEW: Custom widget to display the animated AI calculating UI.
 class _AiProgressView extends StatefulWidget {
   const _AiProgressView({Key? key}) : super(key: key);
 
@@ -781,7 +853,6 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
   @override
   void initState() {
     super.initState();
-    // Rotates smoothly to cycle the rainbow gradient colors around the screen
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
   }
 
@@ -799,7 +870,6 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
         return Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            // Full screen subtle rotating rainbow effect
             gradient: SweepGradient(
               colors: [
                 Colors.red.withOpacity(0.1),
@@ -817,7 +887,6 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Inner glowing rainbow mask over the central AI icon
                 ShaderMask(
                   shaderCallback: (bounds) => SweepGradient(
                     colors: const [Colors.red, Colors.orange, Colors.yellow, Colors.green, Colors.blue, Colors.purple, Colors.red],
@@ -828,15 +897,13 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
                 const SizedBox(height: 24),
                 const Text('AI Calculating Risk Probability', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                 const SizedBox(height: 8),
-                const Text('Scanning vectors and securing payload...', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
                 const SizedBox(height: 40),
 
-                // Animated tracking progress bar to simulate completion
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 50.0),
                   child: TweenAnimationBuilder<double>(
                     tween: Tween<double>(begin: 0.0, end: 0.98),
-                    duration: const Duration(seconds: 8), // Standard wait simulation time for AI engine
+                    duration: const Duration(seconds: 8),
                     builder: (context, value, child) {
                       return Column(
                         children: [

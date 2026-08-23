@@ -118,7 +118,7 @@ class MeScreen extends StatelessWidget {
                 ),
               ),
               subtitle: const Text(
-                'Manage profile & Log out',
+                'Manage Profile & Sign Out',
                 style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
               trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
