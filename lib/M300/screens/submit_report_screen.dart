@@ -2,9 +2,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../M400/models/profile_model.dart';
 import '../../core/exceptions/app_exceptions.dart';
@@ -37,8 +37,6 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
   final _address = TextEditingController();
   final _description = TextEditingController();
   final _otherCategory = TextEditingController();
-  final _latitude = TextEditingController();
-  final _longitude = TextEditingController();
 
   final _categories = const [
     'Unauthorized employment',
@@ -58,9 +56,12 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
   double? _lat;
   double? _lng;
   bool _locating = true;
+  bool _hasLocationPin = false;
+  bool _locationFromDevice = false;
+  bool _locationPermissionGranted = false;
   bool _submitting = false;
 
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
 
   // Default fallback map position (Kuala Lumpur)
   LatLng _selectedLatLng = const LatLng(3.1390, 101.6869);
@@ -76,7 +77,7 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     for (final controller in [
       _name,
       _phone,
@@ -85,8 +86,6 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
       _address,
       _description,
       _otherCategory,
-      _latitude,
-      _longitude,
     ]) {
       controller.dispose();
     }
@@ -95,6 +94,7 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
   /// Location Detection with Device Settings Prompt
   Future<void> _detectLocation() async {
+    if (mounted) setState(() => _locating = true);
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -108,7 +108,7 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
         }
         serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!serviceEnabled) {
-          _useFallbackLocation();
+          _enableManualLocation();
           return;
         }
       }
@@ -117,7 +117,7 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _useFallbackLocation();
+          _enableManualLocation();
           return;
         }
       }
@@ -131,26 +131,42 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
             onConfirm: () async => await Geolocator.openAppSettings(),
           );
         }
-        _useFallbackLocation();
+        _enableManualLocation();
         return;
       }
 
+      if (mounted) {
+        setState(() => _locationPermissionGranted = true);
+      }
+
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       if (!mounted) return;
 
-      _updatePinnedLocation(LatLng(position.latitude, position.longitude));
+      _updatePinnedLocation(
+        LatLng(position.latitude, position.longitude),
+        fromDevice: true,
+      );
     } catch (_) {
-      _useFallbackLocation();
+      _enableManualLocation();
     } finally {
       if (mounted) setState(() => _locating = false);
     }
   }
 
-  void _useFallbackLocation() {
-    _updatePinnedLocation(_selectedLatLng);
-    if (mounted) setState(() => _locating = false);
+  void _enableManualLocation() {
+    if (!mounted) return;
+    setState(() {
+      _lat = null;
+      _lng = null;
+      _hasLocationPin = false;
+      _locationFromDevice = false;
+      _locationPermissionGranted = false;
+      _locating = false;
+    });
   }
 
   Future<void> _showLocationPromptDialog({
@@ -191,20 +207,75 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
     );
   }
 
-  void _updatePinnedLocation(LatLng target) {
+  void _updatePinnedLocation(LatLng target, {bool fromDevice = false}) {
     setState(() {
       _selectedLatLng = target;
       _lat = target.latitude;
       _lng = target.longitude;
-      _latitude.text = target.latitude.toStringAsFixed(6);
-      _longitude.text = target.longitude.toStringAsFixed(6);
+      _hasLocationPin = true;
+      _locationFromDevice = fromDevice;
     });
 
-    _mapController.move(target, 15.0);
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 16)),
+    );
   }
 
   Future<void> _openMapLocationPicker() async {
     LatLng tempPicked = _selectedLatLng;
+    bool tempHasPin = _hasLocationPin;
+    final searchController = TextEditingController();
+    final geocoding = Geocoding();
+    GoogleMapController? expandedMapController;
+    bool searching = false;
+    bool dialogOpen = true;
+    String? searchError;
+
+    Future<void> searchLocation(StateSetter setMapState) async {
+      final query = searchController.text.trim();
+      if (query.isEmpty || searching) return;
+
+      if (!dialogOpen) return;
+      setMapState(() {
+        searching = true;
+        searchError = null;
+      });
+
+      try {
+        // Uses the phone's native geocoder. This intentionally avoids the
+        // billable Google Places and Google Geocoding web APIs.
+        final matches = await geocoding.locationFromAddress(query);
+        if (!dialogOpen) return;
+        if (matches.isEmpty) {
+          setMapState(() => searchError = 'No matching location found.');
+          return;
+        }
+
+        final result = matches.first;
+        tempPicked = LatLng(result.latitude, result.longitude);
+        tempHasPin = true;
+        setMapState(() {});
+        await expandedMapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: tempPicked, zoom: 16),
+          ),
+        );
+      } on PlatformException catch (error) {
+        if (!dialogOpen) return;
+        setMapState(() {
+          searchError = error.code == 'IO_ERROR'
+              ? 'Location search is temporarily unavailable. You can still tap the map.'
+              : 'Could not search for that location.';
+        });
+      } catch (_) {
+        if (!dialogOpen) return;
+        setMapState(() {
+          searchError = 'Could not search for that location.';
+        });
+      } finally {
+        if (dialogOpen) setMapState(() => searching = false);
+      }
+    }
 
     final LatLng? pickedResult = await showDialog<LatLng>(
       context: context,
@@ -215,7 +286,7 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
               child: Scaffold(
                 appBar: AppBar(
                   title: const Text(
-                    'Tap Anywhere to Pin Location',
+                    'Choose Incident Location',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -229,7 +300,9 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                   ),
                   actions: [
                     TextButton.icon(
-                      onPressed: () => Navigator.of(dialogCtx).pop(tempPicked),
+                      onPressed: tempHasPin
+                          ? () => Navigator.of(dialogCtx).pop(tempPicked)
+                          : null,
                       icon: const Icon(
                         Icons.check_circle_rounded,
                         color: Color(0xFF1E3A8A),
@@ -246,39 +319,104 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                 ),
                 body: Stack(
                   children: [
-                    FlutterMap(
-                      options: MapOptions(
-                        initialCenter: tempPicked,
-                        initialZoom: 16.0,
-                        onTap: (tapPosition, point) {
-                          setMapState(() {
-                            tempPicked = point;
-                          });
-                        },
+                    GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: tempPicked,
+                        zoom: 16,
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                          userAgentPackageName: 'com.findmy.app',
+                      onMapCreated: (controller) {
+                        expandedMapController = controller;
+                      },
+                      onTap: (point) {
+                        FocusScope.of(context).unfocus();
+                        setMapState(() {
+                          tempPicked = point;
+                          tempHasPin = true;
+                          searchError = null;
+                        });
+                      },
+                      markers: tempHasPin
+                          ? {
+                              Marker(
+                                markerId: const MarkerId('incident-pin'),
+                                position: tempPicked,
+                              ),
+                            }
+                          : const <Marker>{},
+                      compassEnabled: true,
+                      zoomControlsEnabled: true,
+                      zoomGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      myLocationEnabled: _locationPermissionGranted,
+                      myLocationButtonEnabled: _locationPermissionGranted,
+                      mapToolbarEnabled: false,
+                      padding: const EdgeInsets.only(top: 86, bottom: 100),
+                    ),
+                    Positioned(
+                      top: 14,
+                      left: 14,
+                      right: 14,
+                      child: Material(
+                        elevation: 5,
+                        borderRadius: BorderRadius.circular(14),
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+                          child: TextField(
+                            controller: searchController,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => searchLocation(setMapState),
+                            decoration: InputDecoration(
+                              hintText: 'Search address or landmark',
+                              prefixIcon: const Icon(
+                                Icons.search_rounded,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                              suffixIcon: searching
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(14),
+                                      child: SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : IconButton(
+                                      tooltip: 'Search location',
+                                      onPressed: () =>
+                                          searchLocation(setMapState),
+                                      icon: const Icon(
+                                        Icons.arrow_forward_rounded,
+                                      ),
+                                    ),
+                              border: InputBorder.none,
+                            ),
+                          ),
                         ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: tempPicked,
-                              width: 40,
-                              height: 40,
-                              alignment: Alignment.topCenter,
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Color(0xFFDC2626),
-                                size: 40,
+                      ),
+                    ),
+                    if (searchError != null)
+                      Positioned(
+                        top: 82,
+                        left: 18,
+                        right: 18,
+                        child: Material(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              searchError!,
+                              style: const TextStyle(
+                                color: Color(0xFF9A3412),
+                                fontSize: 12,
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
                     Positioned(
                       bottom: 24,
                       left: 16,
@@ -314,9 +452,9 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                'Lat: ${tempPicked.latitude.toStringAsFixed(6)} | Lng: ${tempPicked.longitude.toStringAsFixed(6)}',
-                                style: const TextStyle(
+                              const Text(
+                                'Move the pin, then confirm this location.',
+                                style: TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF64748B),
                                 ),
@@ -334,6 +472,14 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
         );
       },
     );
+
+    dialogOpen = false;
+    // GoogleMap owns the lifecycle of its platform-view controller. Disposing
+    // it here races with the dialog route teardown and can trigger Flutter's
+    // `_dependents.isEmpty` assertion when the map is removed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      searchController.dispose();
+    });
 
     if (pickedResult != null) {
       _updatePinnedLocation(pickedResult);
@@ -462,13 +608,6 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
     }
   }
 
-  void _syncCoordinates() {
-    _lat = double.tryParse(_latitude.text.trim());
-    _lng = double.tryParse(_longitude.text.trim());
-    if (_lat != null && (_lat! < -90 || _lat! > 90)) _lat = null;
-    if (_lng != null && (_lng! < -180 || _lng! > 180)) _lng = null;
-  }
-
   /// Identifies if any previous step is missing mandatory fields
   int? _getInvalidStep() {
     // Step 0: Reporter Details
@@ -483,6 +622,9 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
     if (_category == 'Other' && _otherCategory.text.trim().length < 2) {
       return 1;
     }
+
+    // Step 2: A user must choose either the device location or a manual pin.
+    if (!_hasLocationPin || _lat == null || _lng == null) return 2;
 
     // Step 2: Evidence Files
     if (_files.isEmpty) return 2;
@@ -503,6 +645,9 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
         alertMessage = 'Please check your contact details in Step 1.';
       } else if (invalidStep == 1) {
         alertMessage = 'Please complete all missing details in Step 2.';
+      } else if (invalidStep == 2 && !_hasLocationPin) {
+        alertMessage =
+            'Pin the incident location on the map before submitting.';
       } else if (invalidStep == 2 && _files.isEmpty) {
         alertMessage = 'At least one photo or video evidence is required.';
       }
@@ -532,8 +677,6 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
     }
 
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    _syncCoordinates();
-
     setState(() => _submitting = true);
     try {
       final paths = await widget.service.uploadEvidence(_files);
@@ -562,10 +705,10 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
       // 2. Add in-app feedback notification entry
       await widget.service.createNotification(
-        email: _email.text.trim(),
-        title: 'Report Submitted Successfully',
-        body:
-            'Your incident report (Ticket ID: ${report.ticketId}) has been received and registered in our system.',
+        userId: widget.profile.id,
+        title: 'Incident Report Submitted',
+        message:
+            'Ticket ${report.ticketId} was submitted and is now pending review.',
       );
 
       if (!mounted) return;
@@ -789,6 +932,41 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
   String _timeForDb(TimeOfDay time) =>
       '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    String? hint,
+    required IconData icon,
+    bool readOnly = false,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF1E3A8A)),
+      suffixIcon: readOnly
+          ? const Icon(
+              Icons.lock_outline_rounded,
+              size: 18,
+              color: Color(0xFF94A3B8),
+            )
+          : null,
+      filled: true,
+      fillColor: readOnly ? const Color(0xFFF1F5F9) : Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF1E3A8A), width: 1.5),
+      ),
+    );
+  }
 
   Widget _buildSelectionBox(
     String title,
@@ -1147,65 +1325,53 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
               isActive: _currentStep >= 0,
-              content: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: TextFormField(
-                      controller: _name,
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name*',
-                        filled: true,
-                        fillColor: const Color(0xFFF1F5F9),
-                        suffixIcon: const Icon(
-                          Icons.lock_outline,
-                          size: 16,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+              content: Padding(
+                // A populated read-only field floats its label above the
+                // outline. Keep it clear of the Stepper content boundary.
+                padding: const EdgeInsets.only(top: 10),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: TextFormField(
+                        controller: _name,
+                        readOnly: true,
+                        decoration: _fieldDecoration(
+                          label: 'Full Name*',
+                          icon: Icons.person_outline_rounded,
+                          readOnly: true,
                         ),
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: TextFormField(
-                      controller: _phone,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        labelText: 'Phone Number*',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: TextFormField(
+                        controller: _phone,
+                        keyboardType: TextInputType.phone,
+                        decoration: _fieldDecoration(
+                          label: 'Phone Number*',
+                          hint: 'e.g. 012 345 6789',
+                          icon: Icons.phone_outlined,
                         ),
+                        validator: (v) => v == null || v.trim().length < 5
+                            ? 'Enter valid phone number'
+                            : null,
                       ),
-                      validator: (v) => v == null || v.trim().length < 5
-                          ? 'Enter valid phone number'
-                          : null,
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: TextFormField(
-                      controller: _email,
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: 'Email Address*',
-                        filled: true,
-                        fillColor: const Color(0xFFF1F5F9),
-                        suffixIcon: const Icon(
-                          Icons.lock_outline,
-                          size: 16,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: TextFormField(
+                        controller: _email,
+                        readOnly: true,
+                        decoration: _fieldDecoration(
+                          label: 'Email Address*',
+                          icon: Icons.email_outlined,
+                          readOnly: true,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
@@ -1232,12 +1398,10 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                       child: TextFormField(
                         controller: _otherCategory,
                         maxLength: 100,
-                        decoration: InputDecoration(
-                          labelText: 'Specify Incident Category*',
-                          hintText: 'e.g., Illegal business operations',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                        decoration: _fieldDecoration(
+                          label: 'Specify Incident Category*',
+                          hint: 'e.g. Illegal business operations',
+                          icon: Icons.category_outlined,
                         ),
                         validator: (v) =>
                             _category == 'Other' &&
@@ -1258,12 +1422,10 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                     padding: const EdgeInsets.only(bottom: 12.0),
                     child: TextFormField(
                       controller: _location,
-                      decoration: InputDecoration(
-                        labelText: 'Location / Landmark*',
-                        hintText: 'e.g., Central Market Plaza',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                      decoration: _fieldDecoration(
+                        label: 'Location / Landmark*',
+                        hint: 'e.g. Central Market Plaza',
+                        icon: Icons.location_city_outlined,
                       ),
                       validator: (v) => v == null || v.trim().length < 2
                           ? 'Required (min 2 chars)'
@@ -1275,11 +1437,10 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                     child: TextFormField(
                       controller: _address,
                       maxLines: 2,
-                      decoration: InputDecoration(
-                        labelText: 'Full Address*',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                      decoration: _fieldDecoration(
+                        label: 'Full Address*',
+                        hint: 'Building, street, district and state',
+                        icon: Icons.home_outlined,
                       ),
                       validator: (v) => v == null || v.trim().length < 5
                           ? 'Required (min 5 chars)'
@@ -1329,13 +1490,10 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                   TextFormField(
                     controller: _description,
                     maxLines: 4,
-                    decoration: InputDecoration(
-                      labelText: 'What Happened*',
-                      hintText:
-                          'Describe the violation or incident in detail...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                    decoration: _fieldDecoration(
+                      label: 'What Happened*',
+                      hint: 'Describe the violation or incident in detail…',
+                      icon: Icons.notes_rounded,
                     ),
                     validator: (value) =>
                         value != null && value.trim().length >= 10
@@ -1408,83 +1566,72 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
                         SizedBox(
                           height: 200,
                           child: ClipRRect(
-                            child: FlutterMap(
-                              mapController: _mapController,
-                              options: MapOptions(
-                                initialCenter: _selectedLatLng,
-                                initialZoom: 15.0,
-                                onTap: (tapPosition, point) =>
-                                    _updatePinnedLocation(point),
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(0),
+                            ),
+                            child: GoogleMap(
+                              initialCameraPosition: CameraPosition(
+                                target: _selectedLatLng,
+                                zoom: 15,
                               ),
-                              children: [
-                                TileLayer(
-                                  urlTemplate:
-                                      'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                                  userAgentPackageName: 'com.findmy.app',
-                                ),
-                                MarkerLayer(
-                                  markers: [
-                                    Marker(
-                                      point: _selectedLatLng,
-                                      width: 40,
-                                      height: 40,
-                                      alignment: Alignment.topCenter,
-                                      child: const Icon(
-                                        Icons.location_on,
-                                        color: Color(0xFFDC2626),
-                                        size: 40,
+                              onMapCreated: (controller) {
+                                _mapController = controller;
+                              },
+                              onTap: (point) => _updatePinnedLocation(point),
+                              markers: _hasLocationPin
+                                  ? {
+                                      Marker(
+                                        markerId: const MarkerId(
+                                          'incident-preview-pin',
+                                        ),
+                                        position: _selectedLatLng,
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    }
+                                  : const <Marker>{},
+                              compassEnabled: false,
+                              zoomControlsEnabled: false,
+                              myLocationEnabled: false,
+                              myLocationButtonEnabled: false,
+                              mapToolbarEnabled: false,
+                              buildingsEnabled: true,
                             ),
                           ),
                         ),
                         Container(
                           padding: const EdgeInsets.all(12),
                           color: const Color(0xFFF8FAFC),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              const Text(
-                                'Tap map anywhere to adjust pin manually.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF64748B),
+                              Icon(
+                                _hasLocationPin
+                                    ? (_locationFromDevice
+                                          ? Icons.my_location_rounded
+                                          : Icons.location_on_rounded)
+                                    : Icons.info_outline_rounded,
+                                size: 18,
+                                color: _hasLocationPin
+                                    ? const Color(0xFF15803D)
+                                    : const Color(0xFFB45309),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _locating
+                                      ? 'Finding your current location…'
+                                      : _hasLocationPin
+                                      ? (_locationFromDevice
+                                            ? 'Pinned to your current device location.'
+                                            : 'Manual location pin selected.')
+                                      : 'Tap the map to place the incident pin.',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF475569),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _latitude,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Latitude',
-                                        isDense: true,
-                                        filled: true,
-                                        fillColor: Color(0xFFF1F5F9),
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _longitude,
-                                      readOnly: true,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Longitude',
-                                        isDense: true,
-                                        filled: true,
-                                        fillColor: Color(0xFFF1F5F9),
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              TextButton(
+                                onPressed: _locating ? null : _detectLocation,
+                                child: const Text('Use GPS'),
                               ),
                             ],
                           ),

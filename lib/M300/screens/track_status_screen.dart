@@ -63,31 +63,26 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
     }
   }
 
-  /// Status badge generator
-  Widget _buildStatusBadge(String status) {
+  Widget _buildStatusBadge(IncidentReportStatus status) {
     Color bg;
     Color fg;
-    String label = status.toUpperCase();
+    IconData icon;
 
-    switch (status.toLowerCase()) {
-      case 'resolved':
-      case 'approved':
+    switch (status) {
+      case IncidentReportStatus.validated:
         bg = const Color(0xFFDCFCE7);
         fg = const Color(0xFF15803D);
+        icon = Icons.verified_rounded;
         break;
-      case 'in progress':
-      case 'under investigation':
-        bg = const Color(0xFFDBEAFE);
-        fg = const Color(0xFF1D4ED8);
-        break;
-      case 'rejected':
-      case 'dismissed':
+      case IncidentReportStatus.rejected:
         bg = const Color(0xFFFEE2E2);
         fg = const Color(0xFFB91C1C);
+        icon = Icons.cancel_rounded;
         break;
-      default: // Pending / Pending Review
+      case IncidentReportStatus.pendingReview:
         bg = const Color(0xFFFEF3C7);
         fg = const Color(0xFFB45309);
+        icon = Icons.hourglass_top_rounded;
         break;
     }
 
@@ -97,9 +92,20 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
         color: bg,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            status.label.toUpperCase(),
+            style: TextStyle(
+              color: fg,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -108,7 +114,7 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
   Widget _buildReportCard(Map<String, dynamic> report) {
     final ticketId = report['ticket_id'] ?? 'N/A';
     final category = report['category'] ?? 'General Incident';
-    final status = (report['status'] ?? 'Pending').toString();
+    final status = IncidentReportStatus.fromRaw(report['status']?.toString());
     final date = report['created_at'] != null
         ? DateTime.parse(
       report['created_at'],
@@ -116,14 +122,12 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
         : 'Recent';
     final description = report['description'] ?? '';
 
-    // Check if status allows editing
-    final isEditable =
-        status.toLowerCase() == 'pending' ||
-            status.toLowerCase() == 'pending review';
+    final isEditable = status.canEdit;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
+      elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -134,46 +138,75 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      ticketId,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.description_outlined,
+                    size: 20,
+                    color: Color(0xFF1E3A8A),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              ticketId,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.copy_outlined,
+                              size: 16,
+                              color: Color(0xFF64748B),
+                            ),
+                            tooltip: 'Copy ticket ID',
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: ticketId));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Ticket ID copied.'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                            },
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.only(left: 6),
+                          ),
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.copy,
-                        size: 16,
-                        color: Color(0xFF64748B),
+                      const SizedBox(height: 3),
+                      Text(
+                        category,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
                       ),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: ticketId));
-                      },
-                      constraints: const BoxConstraints(),
-                      padding: const EdgeInsets.only(left: 6),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 _buildStatusBadge(status),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              category,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF0F172A),
-              ),
-            ),
             if (description.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 12),
               Text(
                 description,
                 maxLines: 2,
@@ -181,26 +214,34 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                 style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
             ],
-            const SizedBox(height: 12),
+            const Divider(height: 24, color: Color(0xFFE2E8F0)),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Submitted: $date',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF94A3B8),
+                const Icon(
+                  Icons.calendar_today_outlined,
+                  size: 14,
+                  color: Color(0xFF94A3B8),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Submitted $date',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
                   ),
                 ),
                 if (isEditable)
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                        horizontal: 10,
+                        vertical: 7,
                       ),
-                      minimumSize: Size.zero,
+                      minimumSize: const Size(0, 34),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: const BorderSide(color: Color(0xFF1E3A8A)),
                     ),
                     icon: const Icon(
                       Icons.edit_note,
@@ -229,10 +270,13 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                     },
                   )
                 else
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: Color(0xFF94A3B8),
+                  const Text(
+                    'Editing locked',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
               ],
             ),

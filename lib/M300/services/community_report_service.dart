@@ -95,15 +95,17 @@ class CommunityReportService {
 
   /// Creates an in-app notification entry for a user
   Future<void> createNotification({
-    required String email,
+    required String userId,
     required String title,
-    required String body,
+    required String message,
+    String type = 'Activity',
   }) async {
     try {
       await _supabase.from('notifications').insert({
-        'email': email,
+        'user_id': userId,
         'title': title,
-        'body': body,
+        'message': message,
+        'type': type,
         'is_read': false,
         'created_at': DateTime.now().toIso8601String(),
       });
@@ -233,7 +235,7 @@ class CommunityReportService {
     required List<String> mediaPaths,
   }) async {
     try {
-      await _supabase
+      final updatedReports = await _supabase
           .from('incident_reports')
           .update({
             'description': description,
@@ -244,7 +246,17 @@ class CommunityReportService {
             'media_paths': mediaPaths,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', reportId);
+          .eq('id', reportId)
+          .eq('status', 'Pending Review')
+          .select('id');
+
+      if (updatedReports.isEmpty) {
+        throw AppException(
+          'This report can no longer be edited because it is not Pending Review.',
+        );
+      }
+    } on AppException {
+      rethrow;
     } catch (e) {
       throw AppException('Failed to update incident report: $e');
     }

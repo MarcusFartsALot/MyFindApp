@@ -1,9 +1,12 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:flutter/services.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../core/exceptions/app_exceptions.dart';
 import '../models/incident_report_model.dart';
@@ -45,8 +48,11 @@ class _EditReportScreenState extends State<EditReportScreen> {
   bool _saving = false;
 
   // Map Controller and State
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   late LatLng _selectedLatLng;
+  bool _locating = false;
+  bool _locationFromDevice = false;
+  bool _locationPermissionGranted = false;
 
   @override
   void initState() {
@@ -60,7 +66,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
     final dateStr =
         '${widget.report.incidentDate.day}/${widget.report.incidentDate.month}/${widget.report.incidentDate.year}';
-    final timeStr = widget.report.incidentTime ?? 'N/A';
+    final timeStr = widget.report.incidentTime;
     _incidentDateTime = TextEditingController(text: '$dateStr at $timeStr');
 
     // Populate Editable Fields
@@ -80,7 +86,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     for (final controller in [
       _reporterName,
       _reporterPhone,
@@ -122,17 +128,132 @@ class _EditReportScreenState extends State<EditReportScreen> {
     }
   }
 
-  void _updatePinnedLocation(LatLng target) {
+  Future<void> _detectLocation() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Location services are off. Enable GPS or pin the map manually.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Location permission was not granted. You can pin the map manually.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      _locationPermissionGranted = true;
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      if (!mounted) return;
+      _updatePinnedLocation(
+        LatLng(position.latitude, position.longitude),
+        fromDevice: true,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not get the device location. Please pin the map manually.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  void _updatePinnedLocation(LatLng target, {bool fromDevice = false}) {
     setState(() {
       _selectedLatLng = target;
       _latitude.text = target.latitude.toStringAsFixed(6);
       _longitude.text = target.longitude.toStringAsFixed(6);
+      _locationFromDevice = fromDevice;
     });
-    _mapController.move(target, 15.0);
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 16)),
+    );
   }
 
   Future<void> _openMapLocationPicker() async {
     LatLng tempPicked = _selectedLatLng;
+    final searchController = TextEditingController();
+    final geocoding = Geocoding();
+    GoogleMapController? expandedMapController;
+    bool searching = false;
+    bool dialogOpen = true;
+    String? searchError;
+
+    Future<void> searchLocation(StateSetter setMapState) async {
+      final query = searchController.text.trim();
+      if (query.isEmpty || searching || !dialogOpen) return;
+
+      setMapState(() {
+        searching = true;
+        searchError = null;
+      });
+
+      try {
+        // Native device geocoding keeps search free of billable Places calls.
+        final matches = await geocoding.locationFromAddress(query);
+        if (!dialogOpen) return;
+        if (matches.isEmpty) {
+          setMapState(() => searchError = 'No matching location found.');
+          return;
+        }
+
+        final match = matches.first;
+        tempPicked = LatLng(match.latitude, match.longitude);
+        setMapState(() {});
+        await expandedMapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: tempPicked, zoom: 16),
+          ),
+        );
+      } on PlatformException catch (error) {
+        if (!dialogOpen) return;
+        setMapState(() {
+          searchError = error.code == 'IO_ERROR'
+              ? 'Location search is unavailable. You can still tap the map.'
+              : 'Could not search for that location.';
+        });
+      } catch (_) {
+        if (dialogOpen) {
+          setMapState(
+            () => searchError = 'Could not search for that location.',
+          );
+        }
+      } finally {
+        if (dialogOpen) setMapState(() => searching = false);
+      }
+    }
 
     final LatLng? pickedResult = await showDialog<LatLng>(
       context: context,
@@ -143,7 +264,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
               child: Scaffold(
                 appBar: AppBar(
                   title: const Text(
-                    'Tap Anywhere to Pin Location',
+                    'Choose Incident Location',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -174,39 +295,98 @@ class _EditReportScreenState extends State<EditReportScreen> {
                 ),
                 body: Stack(
                   children: [
-                    FlutterMap(
-                      options: MapOptions(
-                        initialCenter: tempPicked,
-                        initialZoom: 16.0,
-                        onTap: (tapPosition, point) {
-                          setMapState(() {
-                            tempPicked = point;
-                          });
-                        },
+                    GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: tempPicked,
+                        zoom: 16,
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                          userAgentPackageName: 'com.findmy.app',
+                      onMapCreated: (controller) {
+                        expandedMapController = controller;
+                      },
+                      onTap: (point) {
+                        FocusScope.of(context).unfocus();
+                        setMapState(() {
+                          tempPicked = point;
+                          searchError = null;
+                        });
+                      },
+                      markers: {
+                        Marker(
+                          markerId: const MarkerId('edit-incident-pin'),
+                          position: tempPicked,
                         ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: tempPicked,
-                              width: 40,
-                              height: 40,
-                              alignment: Alignment.topCenter,
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Color(0xFFDC2626),
-                                size: 40,
+                      },
+                      compassEnabled: true,
+                      zoomControlsEnabled: true,
+                      zoomGesturesEnabled: true,
+                      rotateGesturesEnabled: true,
+                      scrollGesturesEnabled: true,
+                      myLocationEnabled: _locationPermissionGranted,
+                      myLocationButtonEnabled: _locationPermissionGranted,
+                      mapToolbarEnabled: false,
+                      padding: const EdgeInsets.only(top: 86, bottom: 100),
+                    ),
+                    Positioned(
+                      top: 14,
+                      left: 14,
+                      right: 14,
+                      child: Material(
+                        elevation: 5,
+                        borderRadius: BorderRadius.circular(14),
+                        color: Colors.white,
+                        child: TextField(
+                          controller: searchController,
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: (_) => searchLocation(setMapState),
+                          decoration: InputDecoration(
+                            hintText: 'Search address or landmark',
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                            suffixIcon: searching
+                                ? const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : IconButton(
+                                    tooltip: 'Search location',
+                                    onPressed: () =>
+                                        searchLocation(setMapState),
+                                    icon: const Icon(
+                                      Icons.arrow_forward_rounded,
+                                    ),
+                                  ),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (searchError != null)
+                      Positioned(
+                        top: 82,
+                        left: 18,
+                        right: 18,
+                        child: Material(
+                          color: const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              searchError!,
+                              style: const TextStyle(
+                                color: Color(0xFF9A3412),
+                                fontSize: 12,
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
                     Positioned(
                       bottom: 24,
                       left: 16,
@@ -242,9 +422,9 @@ class _EditReportScreenState extends State<EditReportScreen> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                'Lat: ${tempPicked.latitude.toStringAsFixed(6)} | Lng: ${tempPicked.longitude.toStringAsFixed(6)}',
-                                style: const TextStyle(
+                              const Text(
+                                'Move the pin, then confirm this location.',
+                                style: TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF64748B),
                                 ),
@@ -262,6 +442,11 @@ class _EditReportScreenState extends State<EditReportScreen> {
         );
       },
     );
+
+    dialogOpen = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      searchController.dispose();
+    });
 
     if (pickedResult != null) {
       _updatePinnedLocation(pickedResult);
@@ -287,8 +472,9 @@ class _EditReportScreenState extends State<EditReportScreen> {
         .toSet();
 
     // Extract filenames from currently staged new files
-    final newlyAddedNames =
-    _newFiles.map((file) => file.name.toLowerCase()).toSet();
+    final newlyAddedNames = _newFiles
+        .map((file) => file.name.toLowerCase())
+        .toSet();
 
     for (final file in result.files) {
       // 1. File size check
@@ -421,34 +607,9 @@ class _EditReportScreenState extends State<EditReportScreen> {
                   final url = snapshot.data!;
 
                   if (isVideo) {
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.video_library_rounded,
-                          color: Color(0xFF60A5FA),
-                          size: 64,
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Video Evidence Attached',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          rawPath.split('/').last,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                    return _NetworkVideoPreview(
+                      url: url,
+                      fileName: rawPath.split('/').last,
                     );
                   }
 
@@ -512,6 +673,13 @@ class _EditReportScreenState extends State<EditReportScreen> {
         mediaPaths: [..._existingMediaPaths, ...added],
       );
 
+      await widget.service.createNotification(
+        userId: widget.report.creatorProfileId,
+        title: 'Incident Report Updated',
+        message:
+            'Your changes to ticket ${widget.report.ticketId} were saved successfully.',
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -536,35 +704,40 @@ class _EditReportScreenState extends State<EditReportScreen> {
   }
 
   InputDecoration _inputDecoration(
-      String label, {
-        IconData? prefixIcon,
-        bool isLocked = false,
-      }) {
+    String label, {
+    IconData? prefixIcon,
+    bool isLocked = false,
+  }) {
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(
-        color: isLocked ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+        color: isLocked ? const Color(0xFF94A3B8) : const Color(0xFF475569),
         fontSize: 13,
       ),
       prefixIcon: prefixIcon != null
           ? Icon(
-        prefixIcon,
-        color: isLocked
-            ? const Color(0xFF94A3B8)
-            : const Color(0xFF1E3A8A),
-        size: 20,
-      )
+              prefixIcon,
+              color: isLocked
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFF1E3A8A),
+              size: 20,
+            )
           : null,
       suffixIcon: isLocked
           ? const Icon(Icons.lock_outline, size: 16, color: Color(0xFF94A3B8))
           : null,
       filled: true,
-      fillColor: isLocked ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      fillColor: isLocked ? const Color(0xFFEFF3F8) : Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+      ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: isLocked ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1),
+          color: isLocked ? const Color(0xFFD7DEE8) : const Color(0xFF94A3B8),
+          width: isLocked ? 1 : 1.15,
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -765,7 +938,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Map Location Pin Picker (FlutterMap Implementation)
+            // Map Location Pin Picker (same Google Maps UI as submit report)
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -818,83 +991,61 @@ class _EditReportScreenState extends State<EditReportScreen> {
                   SizedBox(
                     height: 200,
                     child: ClipRRect(
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                          initialCenter: _selectedLatLng,
-                          initialZoom: 15.0,
-                          onTap: (tapPosition, point) =>
-                              _updatePinnedLocation(point),
+                      child: GoogleMap(
+                        initialCameraPosition: CameraPosition(
+                          target: _selectedLatLng,
+                          zoom: 15,
                         ),
-                        children: [
-                          TileLayer(
-                            urlTemplate:
-                            'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                            userAgentPackageName: 'com.findmy.app',
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                        },
+                        onTap: _updatePinnedLocation,
+                        markers: {
+                          Marker(
+                            markerId: const MarkerId(
+                              'edit-incident-preview-pin',
+                            ),
+                            position: _selectedLatLng,
                           ),
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: _selectedLatLng,
-                                width: 40,
-                                height: 40,
-                                alignment: Alignment.topCenter,
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Color(0xFFDC2626),
-                                  size: 40,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        },
+                        compassEnabled: false,
+                        zoomControlsEnabled: false,
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
+                        mapToolbarEnabled: false,
+                        buildingsEnabled: true,
                       ),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.all(12),
                     color: const Color(0xFFF8FAFC),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        const Text(
-                          'Tap map anywhere to adjust pin manually.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF64748B),
+                        Icon(
+                          _locationFromDevice
+                              ? Icons.my_location_rounded
+                              : Icons.location_on_rounded,
+                          size: 18,
+                          color: const Color(0xFF15803D),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _locating
+                                ? 'Finding your current location…'
+                                : _locationFromDevice
+                                ? 'Pinned to your current device location.'
+                                : 'Tap the map to adjust the saved incident pin.',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF475569),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _latitude,
-                                readOnly: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Latitude',
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _longitude,
-                                readOnly: true,
-                                decoration: const InputDecoration(
-                                  labelText: 'Longitude',
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                          ],
+                        TextButton(
+                          onPressed: _locating ? null : _detectLocation,
+                          child: const Text('Use GPS'),
                         ),
                       ],
                     ),
@@ -911,7 +1062,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
                 prefixIcon: Icons.location_city_outlined,
               ),
               validator: (v) =>
-              v == null || v.trim().isEmpty ? 'Required' : null,
+                  v == null || v.trim().isEmpty ? 'Required' : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -922,7 +1073,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
                 prefixIcon: Icons.place_outlined,
               ),
               validator: (v) =>
-              v == null || v.trim().isEmpty ? 'Required' : null,
+                  v == null || v.trim().isEmpty ? 'Required' : null,
             ),
             const SizedBox(height: 24),
 
@@ -961,6 +1112,14 @@ class _EditReportScreenState extends State<EditReportScreen> {
                 children: List.generate(_existingMediaPaths.length, (index) {
                   final rawPath = _existingMediaPaths[index];
                   final fileName = rawPath.split('/').last;
+                  final extension = fileName.split('.').last.toLowerCase();
+                  final isVideo = const {
+                    'mp4',
+                    'mov',
+                    'avi',
+                    'mkv',
+                    'webm',
+                  }.contains(extension);
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -971,9 +1130,13 @@ class _EditReportScreenState extends State<EditReportScreen> {
                     ),
                     child: ListTile(
                       dense: true,
-                      leading: const Icon(
-                        Icons.image_outlined,
-                        color: Color(0xFF1E3A8A),
+                      leading: Icon(
+                        isVideo
+                            ? Icons.video_library_outlined
+                            : Icons.image_outlined,
+                        color: isVideo
+                            ? const Color(0xFF15803D)
+                            : const Color(0xFF1E3A8A),
                       ),
                       title: Text(
                         fileName,
@@ -1083,23 +1246,180 @@ class _EditReportScreenState extends State<EditReportScreen> {
               ),
               child: _saving
                   ? const SizedBox.square(
-                dimension: 20,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
+                      dimension: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
                   : const Text(
-                'Save Changes',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+                      'Save Changes',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _NetworkVideoPreview extends StatefulWidget {
+  final String url;
+  final String fileName;
+
+  const _NetworkVideoPreview({required this.url, required this.fileName});
+
+  @override
+  State<_NetworkVideoPreview> createState() => _NetworkVideoPreviewState();
+}
+
+class _NetworkVideoPreviewState extends State<_NetworkVideoPreview> {
+  late final VideoPlayerController _controller;
+  late final Future<void> _initialization;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _initialization = _controller.initialize().then((_) {
+      _controller.setLooping(false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _initialization,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const SizedBox(
+            height: 220,
+            child: Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !_controller.value.isInitialized) {
+          return const SizedBox(
+            height: 220,
+            child: Center(
+              child: Text(
+                'This video format could not be played on this device.',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final value = _controller.value;
+            final durationMs = value.duration.inMilliseconds;
+            final positionMs = value.position.inMilliseconds.clamp(
+              0,
+              durationMs > 0 ? durationMs : 1,
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AspectRatio(
+                  aspectRatio: value.aspectRatio > 0
+                      ? value.aspectRatio
+                      : 16 / 9,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(_controller),
+                      Material(
+                        color: Colors.black45,
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          iconSize: 34,
+                          color: Colors.white,
+                          tooltip: value.isPlaying ? 'Pause' : 'Play',
+                          onPressed: () {
+                            value.isPlaying
+                                ? _controller.pause()
+                                : _controller.play();
+                          },
+                          icon: Icon(
+                            value.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: const Color(0xFF60A5FA),
+                    inactiveTrackColor: Colors.white24,
+                    thumbColor: Colors.white,
+                    overlayColor: const Color(0x3360A5FA),
+                  ),
+                  child: Slider(
+                    min: 0,
+                    max: durationMs > 0 ? durationMs.toDouble() : 1,
+                    value: positionMs.toDouble(),
+                    onChanged: (value) => _controller.seekTo(
+                      Duration(milliseconds: value.round()),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          widget.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

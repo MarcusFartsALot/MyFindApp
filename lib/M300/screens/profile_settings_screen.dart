@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/validators/validators.dart';
 import '../../M400/models/profile_model.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
@@ -217,6 +218,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     bool obscureCurrent = true;
     bool obscureNew = true;
     bool obscureConfirm = true;
+    String? currentPasswordError;
 
     showDialog(
       context: context,
@@ -292,9 +294,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                             TextFormField(
                               controller: currentPwdController,
                               obscureText: obscureCurrent,
+                              onChanged: (_) {
+                                if (currentPasswordError != null) {
+                                  setModalState(
+                                    () => currentPasswordError = null,
+                                  );
+                                }
+                              },
                               decoration: InputDecoration(
                                 labelText: 'Current Password',
                                 hintText: 'Enter current password',
+                                errorText: currentPasswordError,
                                 prefixIcon: const Icon(
                                   Icons.vpn_key_outlined,
                                   size: 20,
@@ -390,15 +400,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                   ),
                                 ),
                               ),
-                              validator: (val) {
-                                if (val == null || val.isEmpty) {
-                                  return 'Password required';
-                                }
-                                if (val.length < 6) {
-                                  return 'Must be at least 6 characters';
-                                }
-                                return null;
-                              },
+                              validator: Validators.password,
                             ),
                             const SizedBox(height: 16),
 
@@ -450,12 +452,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                   ),
                                 ),
                               ),
-                              validator: (val) {
-                                if (val != newPwdController.text) {
-                                  return 'Passwords do not match';
-                                }
-                                return null;
-                              },
+                              validator: (val) => Validators.confirmPassword(
+                                val,
+                                newPwdController.text,
+                              ),
                             ),
                           ],
                         ),
@@ -511,13 +511,49 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                         return;
                                       }
 
-                                      setModalState(() => isUpdatingPwd = true);
+                                      setModalState(() {
+                                        isUpdatingPwd = true;
+                                        currentPasswordError = null;
+                                      });
 
                                       try {
-                                        await _supabase.auth.signInWithPassword(
-                                          email: widget.profile.email,
-                                          password: currentPwdController.text,
-                                        );
+                                        final currentUser =
+                                            _supabase.auth.currentUser;
+                                        if (currentUser?.id !=
+                                            widget.profile.authId) {
+                                          throw const AuthException(
+                                            'Your session has expired. Please sign in again.',
+                                          );
+                                        }
+                                        final authEmail = currentUser?.email
+                                            ?.trim()
+                                            .toLowerCase();
+                                        if (authEmail == null ||
+                                            authEmail.isEmpty) {
+                                          throw const AuthException(
+                                            'Your Supabase account email is unavailable. Please sign in again.',
+                                          );
+                                        }
+
+                                        // This app's installed Supabase SDK does not yet
+                                        // support UserAttributes.currentPassword. Sign in
+                                        // with the current password to verify it first.
+                                        final signInResponse = await _supabase
+                                            .auth
+                                            .signInWithPassword(
+                                              // Use the email from auth.users, not a
+                                              // profile record that could be stale.
+                                              email: authEmail,
+                                              password:
+                                                  currentPwdController.text,
+                                            );
+
+                                        if (signInResponse.user?.id !=
+                                            widget.profile.authId) {
+                                          throw const AuthException(
+                                            'The current password could not be verified.',
+                                          );
+                                        }
 
                                         await _supabase.auth.updateUser(
                                           UserAttributes(
@@ -525,28 +561,45 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                           ),
                                         );
 
+                                        // Activity logging must not make a successful
+                                        // password change look like a failure.
+                                        try {
+                                          await _supabase
+                                              .from('notifications')
+                                              .insert({
+                                                'user_id': widget.profile.id,
+                                                'title': 'Password Changed',
+                                                'message':
+                                                    'Your account password was changed successfully.',
+                                                'type': 'Activity',
+                                                'is_read': false,
+                                              });
+                                        } catch (error) {
+                                          debugPrint(
+                                            'Could not log password-change activity: $error',
+                                          );
+                                        }
+
                                         if (mounted) {
                                           Navigator.of(dialogContext).pop();
                                           _showSnackBar(
                                             "Your password has been changed successfully.",
                                           );
                                         }
-                                      } on AuthException catch (_) {
-                                        setModalState(
-                                          () => isUpdatingPwd = false,
-                                        );
-                                        _showSnackBar(
-                                          "Invalid current password or criteria not met.",
-                                          isError: true,
-                                        );
+                                      } on AuthException catch (error) {
+                                        setModalState(() {
+                                          isUpdatingPwd = false;
+                                          currentPasswordError = error.message
+                                                  .contains('expired')
+                                              ? error.message
+                                              : 'This password does not match your signed-in Supabase account.';
+                                        });
                                       } catch (e) {
-                                        setModalState(
-                                          () => isUpdatingPwd = false,
-                                        );
-                                        _showSnackBar(
-                                          "System Error.",
-                                          isError: true,
-                                        );
+                                        setModalState(() {
+                                          isUpdatingPwd = false;
+                                          currentPasswordError =
+                                              'Unable to change password. Please try again.';
+                                        });
                                       }
                                     },
                               child: isUpdatingPwd

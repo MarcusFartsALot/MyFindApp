@@ -41,6 +41,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $newStatus = $decision === 'approve' ? 'Validated' : 'Rejected';
 
+            // Load the owner and ticket before updating so the matching
+            // citizen can receive a status notification.
+            $matchingReports = $client->asService(
+                'GET',
+                '/rest/v1/incident_reports?select=creator_profile_id,ticket_id,status&id=eq.'
+                    . rawurlencode($reportId)
+                    . '&limit=1'
+            );
+
+            $report = is_array($matchingReports) && isset($matchingReports[0])
+                ? $matchingReports[0]
+                : null;
+
+            if (!is_array($report)) {
+                throw new RuntimeException('Citizen report was not found.');
+            }
+
+            $ownerProfileId = trim((string)($report['creator_profile_id'] ?? ''));
+            $ticketId = trim((string)($report['ticket_id'] ?? ''));
+
+            if ($ownerProfileId === '' || $ticketId === '') {
+                throw new RuntimeException('Citizen report owner information is incomplete.');
+            }
+
             $updated = $client->asService(
                 'PATCH',
                 '/rest/v1/incident_reports?id=eq.' . rawurlencode($reportId),
@@ -49,6 +73,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'updated_at' => gmdate('c')
                 ]
             );
+
+            // Notification logging is intentionally separate from the status
+            // update. A temporary notification failure must not undo a valid
+            // admin decision.
+            try {
+                $notificationTitle = $newStatus === 'Validated'
+                    ? 'Incident Report Validated'
+                    : 'Incident Report Rejected';
+                $notificationMessage = $newStatus === 'Validated'
+                    ? 'Ticket ' . $ticketId . ' was validated by an administrator.'
+                    : 'Ticket ' . $ticketId . ' was rejected as a false alarm.';
+
+                $client->asService(
+                    'POST',
+                    '/rest/v1/notifications',
+                    [
+                        'user_id' => $ownerProfileId,
+                        'title' => $notificationTitle,
+                        'message' => $notificationMessage,
+                        'type' => 'Alert',
+                        'is_read' => false,
+                        'created_at' => gmdate('c')
+                    ]
+                );
+            } catch (Throwable $notificationError) {
+                error_log(
+                    'Citizen report status notification error: '
+                    . $notificationError->getMessage()
+                );
+            }
 
             if ($decision === 'approve') {
                 $actionMessage = 'Citizen report has been validated successfully.';

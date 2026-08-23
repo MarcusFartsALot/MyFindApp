@@ -5,6 +5,7 @@ import 'package:my_find/M400/models/profile_model.dart';
 
 import 'package:my_find/M300/services/community_report_service.dart';
 import 'package:my_find/M300/screens/report_history_screen.dart';
+import 'package:my_find/M300/screens/risk_map_screen.dart';
 import 'package:my_find/M300/screens/submit_report_screen.dart';
 import 'package:my_find/M300/screens/track_status_screen.dart';
 import 'package:my_find/M300/screens/me_screen.dart';
@@ -65,6 +66,7 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
   Widget build(BuildContext context) {
     final List<Widget> screens = [
       _buildHomeTab(),
+      const RiskMapScreen(),
       TrackStatusScreen(
         service: _reportService,
         userEmail: _currentProfile.email,
@@ -80,7 +82,7 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E3A8A).withOpacity(0.1),
+                color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(
@@ -176,6 +178,11 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
               label: 'Overview',
             ),
             BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map_rounded),
+              label: 'Risk Map',
+            ),
+            BottomNavigationBarItem(
               icon: Icon(Icons.track_changes_outlined),
               activeIcon: Icon(Icons.track_changes_rounded),
               label: 'Track Ticket',
@@ -264,7 +271,7 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1E3A8A).withOpacity(0.25),
+                color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -314,6 +321,16 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
         ),
         const SizedBox(height: 12),
 
+        // Risk Map is the primary community-wide information view.
+        _AnimatedActionCard(
+          title: 'Community Risk Map',
+          subtitle: 'Explore validated incident zones across Kuala Lumpur',
+          icon: Icons.map_outlined,
+          color: const Color(0xFF7C3AED),
+          onTap: () => setState(() => _selectedIndex = 1),
+        ),
+        const SizedBox(height: 12),
+
         // Action Card 1: Submit Report
         _AnimatedActionCard(
           title: 'Report an Incident',
@@ -339,7 +356,7 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
           subtitle: 'Check progress and updates on your submitted reports',
           icon: Icons.track_changes_rounded,
           color: const Color(0xFF0284C7),
-          onTap: () => setState(() => _selectedIndex = 1),
+          onTap: () => setState(() => _selectedIndex = 2),
         ),
         const SizedBox(height: 12),
 
@@ -495,7 +512,7 @@ class _AnimatedActionCardState extends State<_AnimatedActionCard> {
             border: Border.all(color: const Color(0xFFE2E8F0)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.02),
+                color: Colors.black.withValues(alpha: 0.02),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -506,7 +523,7 @@ class _AnimatedActionCardState extends State<_AnimatedActionCard> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: widget.color.withOpacity(0.1),
+                  color: widget.color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(widget.icon, color: widget.color, size: 22),

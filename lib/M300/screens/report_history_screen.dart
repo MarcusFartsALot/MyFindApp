@@ -54,31 +54,26 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
     }
   }
 
-  /// Status badge generator
-  Widget _buildStatusBadge(String status) {
+  Widget _buildStatusBadge(IncidentReportStatus status) {
     Color bg;
     Color fg;
-    final String label = status.toUpperCase();
+    IconData icon;
 
-    switch (status.toLowerCase()) {
-      case 'resolved':
-      case 'approved':
+    switch (status) {
+      case IncidentReportStatus.validated:
         bg = const Color(0xFFDCFCE7);
         fg = const Color(0xFF15803D);
+        icon = Icons.verified_rounded;
         break;
-      case 'in progress':
-      case 'under investigation':
-        bg = const Color(0xFFDBEAFE);
-        fg = const Color(0xFF1D4ED8);
-        break;
-      case 'rejected':
-      case 'dismissed':
+      case IncidentReportStatus.rejected:
         bg = const Color(0xFFFEE2E2);
         fg = const Color(0xFFB91C1C);
+        icon = Icons.cancel_rounded;
         break;
-      default: // Pending / Pending Review
+      case IncidentReportStatus.pendingReview:
         bg = const Color(0xFFFEF3C7);
         fg = const Color(0xFFB45309);
+        icon = Icons.hourglass_top_rounded;
         break;
     }
 
@@ -88,9 +83,20 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
         color: bg,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            status.label.toUpperCase(),
+            style: TextStyle(
+              color: fg,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -199,7 +205,7 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
                 border: Border.all(color: const Color(0xFFE2E8F0)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
+                    color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -238,7 +244,7 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
       itemCount: _reports.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final report = _reports[index];
 
@@ -249,19 +255,19 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
         final description = report.description.isNotEmpty
             ? report.description
             : 'No description provided.';
-        final status = report.status.isNotEmpty ? report.status : 'Pending';
+        final status = report.statusType;
 
-        final formattedDate = report.createdAt != null
-            ? report.createdAt!.toLocal().toString().split('.')[0]
-            : 'Recent';
+        final formattedDate = report.createdAt.toLocal().toString().split(
+          '.',
+        )[0];
 
-        // Extract Latitude & Longitude dynamically
-        final latString = report.latitude != null
-            ? report.latitude.toString()
-            : 'N/A';
-        final lngString = report.longitude != null
-            ? report.longitude.toString()
-            : 'N/A';
+        final urgency = report.urgencyLevel.trim().isEmpty
+            ? 'Normal'
+            : report.urgencyLevel;
+        final location = report.location.trim().isEmpty
+            ? 'Not specified'
+            : report.location;
+        final evidenceCount = report.mediaPaths.length;
 
         return Container(
           decoration: BoxDecoration(
@@ -280,7 +286,6 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Ticket ID (On top header)
                   Text(
                     ticketId,
                     style: const TextStyle(
@@ -291,7 +296,6 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // Category Title
                   Text(
                     category,
                     style: const TextStyle(
@@ -303,15 +307,38 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
                 ],
               ),
               subtitle: Padding(
-                padding: const EdgeInsets.only(top: 6.0),
-                child: Text(
-                  description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                  ),
+                padding: const EdgeInsets.only(top: 7.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 12,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Submitted $formattedDate',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               trailing: _buildStatusBadge(status),
@@ -319,9 +346,11 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
                 const Divider(height: 20, color: Color(0xFFE2E8F0)),
 
                 // Strictly NON-REDUNDANT Details Section
+                _buildDetailRow('Status', status.label),
                 _buildDetailRow('Submitted At', formattedDate),
-                _buildDetailRow('Latitude', latString),
-                _buildDetailRow('Longitude', lngString),
+                _buildDetailRow('Urgency Level', urgency),
+                _buildDetailRow('Location', location),
+                _buildDetailRow('Evidence Files', '$evidenceCount'),
 
                 const SizedBox(height: 8),
                 const Text(

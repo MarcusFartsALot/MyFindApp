@@ -6,6 +6,8 @@
 	<string>Take a photo of your MyKad or passport for administrator review.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Select a MyKad or passport photo for administrator review.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Use your location to pin the incident location in a report.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

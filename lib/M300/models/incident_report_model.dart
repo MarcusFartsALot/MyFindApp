@@ -1,3 +1,29 @@
+enum IncidentReportStatus {
+  pendingReview,
+  validated,
+  rejected;
+
+  static IncidentReportStatus fromRaw(String? value) {
+    switch (value?.trim().toLowerCase()) {
+      case 'validated':
+        return IncidentReportStatus.validated;
+      case 'rejected':
+        return IncidentReportStatus.rejected;
+      case 'pending review':
+      default:
+        return IncidentReportStatus.pendingReview;
+    }
+  }
+
+  String get label => switch (this) {
+    IncidentReportStatus.pendingReview => 'Pending Review',
+    IncidentReportStatus.validated => 'Validated',
+    IncidentReportStatus.rejected => 'Rejected',
+  };
+
+  bool get canEdit => this == IncidentReportStatus.pendingReview;
+}
+
 class IncidentReportModel {
   final String id;
   final String ticketId;
@@ -7,6 +33,7 @@ class IncidentReportModel {
   final String phoneNumber;
   final String email;
   final String category;
+  final String urgencyLevel;
   final String location;
   final String address;
   final DateTime incidentDate;
@@ -28,6 +55,7 @@ class IncidentReportModel {
     required this.phoneNumber,
     required this.email,
     required this.category,
+    required this.urgencyLevel,
     required this.location,
     required this.address,
     required this.incidentDate,
@@ -52,6 +80,7 @@ class IncidentReportModel {
       phoneNumber: json['phone_number'] as String,
       email: json['email'] as String,
       category: json['category'] as String,
+      urgencyLevel: json['urgency_level'] as String? ?? 'Normal',
       location: json['location'] as String,
       address: json['address'] as String,
       incidentDate: DateTime.parse(json['incident_date'] as String),
@@ -68,7 +97,9 @@ class IncidentReportModel {
     );
   }
 
-  bool get canEdit => status == 'Pending Review';
+  IncidentReportStatus get statusType => IncidentReportStatus.fromRaw(status);
+
+  bool get canEdit => statusType.canEdit;
 }
 
 typedef IncidentReportDto = IncidentReportModel;
