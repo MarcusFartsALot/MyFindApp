@@ -19,6 +19,7 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 10;
 $offset = ($page - 1) * $perPage;
 $statusFilter = $_GET['status'] ?? 'all';
+$typeFilter = $_GET['type'] ?? 'all';
 
 /*
 |--------------------------------------------------------------------------
@@ -73,90 +74,160 @@ function supabaseRequest($method, $endpoint, $body = null, $query = []) {
 
 /*
 |--------------------------------------------------------------------------
-| Handle Approve / Reject
+| Helper: Get full Storage URL from citizens or tourists bucket
+|--------------------------------------------------------------------------
+*/
+function getFullStorageUrl($path) {
+    global $SUPABASE_URL;
+    if (empty($path)) return null;
+    if (filter_var($path, FILTER_VALIDATE_URL)) return $path;
+    
+    // ✅ 固定使用 registration-documents bucket
+    return rtrim($SUPABASE_URL, '/') . '/storage/v1/object/public/registration-documents/' . ltrim($path, '/');
+}
+
+/*
+|--------------------------------------------------------------------------
+| Handle Approve / Reject for Tourist or Citizen
 |--------------------------------------------------------------------------
 */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profileId = trim((string)($_POST['profile_id'] ?? ''));
     $decision = trim((string)($_POST['decision'] ?? ''));
+    $type = trim((string)($_POST['type'] ?? 'tourist'));
 
     if ($profileId === '') {
-        $actionError = 'Invalid tourist ID.';
+        $actionError = 'Invalid ID.';
     } elseif (!in_array($decision, ['approve', 'reject'], true)) {
         $actionError = 'Invalid decision.';
     } else {
         try {
             $newStatus = $decision === 'approve' ? 'approved' : 'rejected';
-
-            supabaseRequest(
-                'PATCH',
-                '/rest/v1/tourists?profile_id=eq.' . rawurlencode($profileId),
-                [
-                    'verification_status' => $newStatus,
-                    'verified_at' => gmdate('c'),
-                    'verified_by' => $admin['id'] ?? null
-                ]
-            );
+            
+            if ($type === 'tourist') {
+                supabaseRequest(
+                    'PATCH',
+                    '/rest/v1/tourists?profile_id=eq.' . rawurlencode($profileId),
+                    [
+                        'verification_status' => $newStatus,
+                        'verified_at' => gmdate('c'),
+                        'verified_by' => $admin['id'] ?? null
+                    ]
+                );
+            } else {
+                supabaseRequest(
+                    'PATCH',
+                    '/rest/v1/citizens?profile_id=eq.' . rawurlencode($profileId),
+                    [
+                        'verification_status' => $newStatus,
+                        'verified_at' => gmdate('c'),
+                        'verified_by' => $admin['id'] ?? null
+                    ]
+                );
+            }
 
             $actionMessage = $decision === 'approve'
-                ? 'Tourist has been approved successfully.'
-                : 'Tourist has been rejected successfully.';
+                ? ucfirst($type) . ' has been approved successfully.'
+                : ucfirst($type) . ' has been rejected successfully.';
 
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&page=' . $page);
+            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&type=' . $typeFilter . '&page=' . $page);
             exit;
         } catch (Throwable $e) {
-            $actionError = 'Unable to update the tourist. Please try again later.';
-            error_log('Approve tourist error: ' . $e->getMessage());
+            $actionError = 'Unable to update. Please try again later.';
+            error_log('Approve error: ' . $e->getMessage());
         }
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| Load Tourists with Stats
+| Load Tourists and Citizens with Stats
 |--------------------------------------------------------------------------
 */
-$tourists = [];
-$totalTourists = 0;
+$items = [];
+$totalItems = 0;
 $pendingCount = 0;
 $approvedCount = 0;
 $rejectedCount = 0;
+$touristCount = 0;
+$citizenCount = 0;
 
 try {
-    // FIX: Sort by verified_at instead of created_at
-    $allTourists = supabaseRequest('GET', '/rest/v1/tourists?select=*&order=verified_at.desc.nullslast');
+    $allItems = [];
     
-    if (is_array($allTourists)) {
-        $totalTourists = count($allTourists);
-        foreach ($allTourists as $tourist) {
-            $status = strtolower($tourist['verification_status'] ?? '');
-            if ($status === 'pending') $pendingCount++;
-            elseif ($status === 'approved') $approvedCount++;
-            elseif ($status === 'rejected') $rejectedCount++;
+    // 1. Get Tourists
+    $tourists = supabaseRequest('GET', '/rest/v1/tourists?select=*&order=verified_at.desc.nullslast');
+    if (is_array($tourists)) {
+        foreach ($tourists as $t) {
+            $t['_type'] = 'tourist';
+            $t['_display_name'] = 'Tourist';
+            $t['_icon'] = '🛂';
+            // ✅ 从 tourists bucket 读取照片
+            $t['_photo_front'] = getFullStorageUrl($t['passport_front_url'] ?? null, 'tourist');
+            $t['_photo_back'] = getFullStorageUrl($t['passport_back_url'] ?? null, 'tourist');
+            $allItems[] = $t;
         }
     }
-
-    // FIX: Pagination query - sort by verified_at
-    $queryParams = [
-        'order' => 'verified_at.desc.nullslast',
-        'limit' => $perPage,
-        'offset' => $offset
-    ];
-    if ($statusFilter !== 'all') {
-        $queryParams['verification_status'] = 'eq.' . $statusFilter;
-    }
-    $tourists = supabaseRequest('GET', '/rest/v1/tourists?select=*', null, $queryParams);
     
-    if (!is_array($tourists)) $tourists = [];
+    // 2. Get Citizens
+    $citizens = supabaseRequest('GET', '/rest/v1/citizens?select=*&order=verified_at.desc.nullslast');
+    if (is_array($citizens)) {
+        foreach ($citizens as $c) {
+            $c['_type'] = 'citizen';
+            $c['_display_name'] = 'Citizen';
+            $c['_icon'] = '🪪';
+            // ✅ 从 citizens bucket 读取照片
+            $c['_photo_front'] = getFullStorageUrl($c['ic_front_url'] ?? null, 'citizen');
+            $c['_photo_back'] = getFullStorageUrl($c['ic_back_url'] ?? null, 'citizen');
+            $allItems[] = $c;
+        }
+    }
+    
+    // 3. Filter by type
+    if ($typeFilter === 'tourist') {
+        $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'tourist');
+    } elseif ($typeFilter === 'citizen') {
+        $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'citizen');
+    }
+    
+    // 4. Filter by status
+    if ($statusFilter !== 'all') {
+        $allItems = array_filter($allItems, function($item) use ($statusFilter) {
+            $status = strtolower($item['verification_status'] ?? '');
+            return $status === $statusFilter;
+        });
+    }
+    
+    // 5. Sort by created_at desc
+    usort($allItems, function($a, $b) {
+        $timeA = strtotime($a['created_at'] ?? $a['verified_at'] ?? 'now');
+        $timeB = strtotime($b['created_at'] ?? $b['verified_at'] ?? 'now');
+        return $timeB - $timeA;
+    });
+    
+    // 6. Count stats
+    $totalItems = count($allItems);
+    foreach ($allItems as $item) {
+        $status = strtolower($item['verification_status'] ?? '');
+        if ($status === 'pending') $pendingCount++;
+        elseif ($status === 'approved') $approvedCount++;
+        elseif ($status === 'rejected') $rejectedCount++;
+        
+        if ($item['_type'] === 'tourist') $touristCount++;
+        else $citizenCount++;
+    }
+    
+    // 7. Paginate
+    $items = array_slice($allItems, $offset, $perPage);
     
 } catch (Throwable $e) {
-    $loadError = 'Unable to load tourists. Error: ' . $e->getMessage();
-    error_log('Load tourists error: ' . $e->getMessage());
+    $loadError = 'Unable to load data. Error: ' . $e->getMessage();
+    error_log('Load error: ' . $e->getMessage());
 }
 
-$totalPages = ceil($totalTourists / $perPage);
+$totalPages = ceil($totalItems / $perPage);
 
-render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
+render_admin_start('Approve Registrations', $admin, 'dashboard');
 
 ?>
 
@@ -238,7 +309,7 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
 ========================================================= */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 14px;
 }
 
@@ -281,9 +352,11 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
 .stat-pending .stat-number { color: #f59e0b; }
 .stat-approved .stat-number { color: #10b981; }
 .stat-rejected .stat-number { color: #dc3545; }
+.stat-tourist .stat-number { color: #3b82f6; }
+.stat-citizen .stat-number { color: #8b5cf6; }
 
 /* =========================================================
-   FILTER & EXPORT
+   FILTER BAR
 ========================================================= */
 .filter-bar {
     display: flex;
@@ -302,6 +375,7 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+    align-items: center;
 }
 
 .filter-btn {
@@ -346,24 +420,22 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     border-color: #dc3545;
 }
 
-.export-btn {
-    padding: 6px 16px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
-    cursor: pointer;
-    font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    text-decoration: none;
-    color: #4b5563;
-    transition: all 0.2s;
-    font-weight: 500;
+.filter-btn.active-tourist {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
 }
 
-.export-btn:hover {
-    background: #f3f4f6;
+.filter-btn.active-citizen {
+    background: #8b5cf6;
+    color: white;
+    border-color: #8b5cf6;
+}
+
+.filter-divider {
+    color: #e5e7eb;
+    font-size: 20px;
+    padding: 0 4px;
 }
 
 /* =========================================================
@@ -416,6 +488,51 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     font-weight: 600;
     color: #1a1a2e;
     font-family: monospace;
+}
+
+.type-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.type-tourist {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.type-citizen {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.photo-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid #e5e7eb;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.photo-thumb:hover {
+    transform: scale(1.1);
+}
+
+.photo-thumb-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #9ca3af;
+    border: 1px solid #e5e7eb;
 }
 
 .status-badge {
@@ -664,12 +781,31 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     margin: 16px 0;
 }
 
-.drawer-body .description-text {
-    background: #f8fafc;
-    padding: 16px;
+.drawer-body .photo-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.drawer-body .photo-grid img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
     border-radius: 8px;
-    line-height: 1.6;
-    margin: 0;
+    border: 1px solid #e5e7eb;
+}
+
+.drawer-body .photo-grid .no-photo {
+    width: 100%;
+    height: 200px;
+    border-radius: 8px;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 14px;
+    border: 1px solid #e5e7eb;
 }
 
 .drawer-footer {
@@ -738,8 +874,66 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
 }
 
 /* =========================================================
+   IMAGE VIEWER (Lightbox)
+========================================================= */
+.image-viewer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.image-viewer-overlay.active {
+    display: flex;
+}
+
+.image-viewer-overlay .close-btn {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 40px;
+    cursor: pointer;
+    z-index: 2001;
+    transition: transform 0.2s;
+}
+
+.image-viewer-overlay .close-btn:hover {
+    transform: scale(1.2);
+}
+
+.image-viewer-overlay .viewer-image {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+
+.image-viewer-overlay .viewer-info {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+}
+
+/* =========================================================
    RESPONSIVE
 ========================================================= */
+@media (max-width: 1024px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
 @media (max-width: 768px) {
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -779,6 +973,10 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     .drawer-footer .btn-processed-lg {
         width: 100%;
     }
+    
+    .drawer-body .photo-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 480px) {
@@ -812,10 +1010,9 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     <!-- HEADER -->
     <section class="tourist-header">
         <div>
-            <h1><i class='bx bx-user-check'></i> Approve Tourist Registrations</h1>
             <div class="subtitle">
-                <p>Review tourist registrations and approve or reject them.</p>
-                <span class="badge-tourists">🛂 Tourist Registrations</span>
+                <p>Review tourist and citizen registrations, then approve or reject them.</p>
+                <span class="badge-tourists">🪪 All Registrations</span>
             </div>
         </div>
         <a href="admin_dashboard.php" class="btn-back">
@@ -849,7 +1046,7 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
     <section class="stats-grid">
         <div class="stat-card stat-total">
             <span class="stat-icon">📊</span>
-            <span class="stat-number"><?= $totalTourists ?></span>
+            <span class="stat-number"><?= $totalItems ?></span>
             <span class="stat-label">Total Registrations</span>
         </div>
         <div class="stat-card stat-pending">
@@ -867,15 +1064,33 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
             <span class="stat-number"><?= $rejectedCount ?></span>
             <span class="stat-label">Rejected</span>
         </div>
+        <div class="stat-card stat-tourist">
+            <span class="stat-icon">🛂</span>
+            <span class="stat-number"><?= $touristCount ?></span>
+            <span class="stat-label">Tourists</span>
+        </div>
+        <div class="stat-card stat-citizen">
+            <span class="stat-icon">🪪</span>
+            <span class="stat-number"><?= $citizenCount ?></span>
+            <span class="stat-label">Citizens</span>
+        </div>
     </section>
 
-    <!-- FILTER & EXPORT -->
+    <!-- FILTER BAR -->
     <div class="filter-bar">
         <div class="filter-group">
-            <a href="?status=all&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
-            <a href="?status=pending&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">⏳ Pending</a>
-            <a href="?status=approved&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">✅ Approved</a>
-            <a href="?status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
+            <!-- Type Filter -->
+            <a href="?type=all&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'all' ? 'active' : '' ?>">All</a>
+            <a href="?type=tourist&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'tourist' ? 'active-tourist' : '' ?>">🛂 Tourist</a>
+            <a href="?type=citizen&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'citizen' ? 'active-citizen' : '' ?>">🪪 Citizen</a>
+            
+            <span class="filter-divider">|</span>
+            
+            <!-- Status Filter -->
+            <a href="?type=<?= $typeFilter ?>&status=all&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All Status</a>
+            <a href="?type=<?= $typeFilter ?>&status=pending&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">⏳ Pending</a>
+            <a href="?type=<?= $typeFilter ?>&status=approved&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">✅ Approved</a>
+            <a href="?type=<?= $typeFilter ?>&status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
         </div>
     </div>
 
@@ -884,23 +1099,37 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
         <table class="tourist-table">
             <thead>
                 <tr>
+                    <th>Type</th>
                     <th>Profile ID</th>
-                    <th>Passport Number</th>
-                    <th>Passport Country</th>
+                    <th>ID / Passport</th>
+                    <th>Photo</th>
+                    <th>Country</th>
                     <th>Status</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
-                <?php if (!empty($tourists)): ?>
-                    <?php foreach ($tourists as $tourist): ?>
+                <?php if (!empty($items)): ?>
+                    <?php foreach ($items as $item): ?>
                         <?php
-                        $profileId = (string)($tourist['profile_id'] ?? '');
-                        $passportNumber = (string)($tourist['passport_number'] ?? 'N/A');
-                        $passportCountry = (string)($tourist['passport_issuing_country'] ?? 'N/A');
-                        $status = (string)($tourist['verification_status'] ?? 'pending');
+                        $profileId = (string)($item['profile_id'] ?? '');
+                        $type = $item['_type'] ?? 'tourist';
+                        $typeIcon = $item['_icon'] ?? '🛂';
+                        $displayName = $item['_display_name'] ?? 'Tourist';
                         
+                        $idNumber = $type === 'tourist' 
+                            ? ($item['passport_number'] ?? 'N/A')
+                            : ($item['ic_number'] ?? 'N/A');
+                        
+                        $country = $type === 'tourist'
+                            ? ($item['passport_issuing_country'] ?? 'N/A')
+                            : 'Malaysia';
+                        
+                        $status = (string)($item['verification_status'] ?? 'pending');
                         $statusLower = strtolower($status);
+                        
+                        $photoFront = $item['_photo_front'] ?? null;
+                        $photoBack = $item['_photo_back'] ?? null;
 
                         $statusClass = match($statusLower) {
                             'pending' => 'status-pending',
@@ -917,16 +1146,29 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
                         };
                         ?>
                         <tr>
+                            <td>
+                                <span class="type-badge <?= $type === 'tourist' ? 'type-tourist' : 'type-citizen' ?>">
+                                    <?= $typeIcon ?> <?= $displayName ?>
+                                </span>
+                            </td>
                             <td class="tourist-id"><?= htmlspecialchars(substr($profileId, 0, 8) . '...', ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><?= htmlspecialchars($passportNumber, ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><?= htmlspecialchars($passportCountry, ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars($idNumber, ENT_QUOTES, 'UTF-8') ?></td>
+                            <td>
+                                <?php if ($photoFront): ?>
+                                    <img class="photo-thumb" src="<?= htmlspecialchars($photoFront, ENT_QUOTES, 'UTF-8') ?>" 
+                                         alt="Photo" onclick="openImagePreview('<?= htmlspecialchars($photoFront, ENT_QUOTES, 'UTF-8') ?>')">
+                                <?php else: ?>
+                                    <div class="photo-thumb-placeholder">📷</div>
+                                <?php endif; ?>
+                            </td>
+                            <td><?= htmlspecialchars($country, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <span class="status-badge <?= $statusClass ?>">
                                     <?= htmlspecialchars($statusDisplay, ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </td>
                             <td>
-                                <button class="btn-view" onclick="openDrawer('<?= htmlspecialchars($profileId, ENT_QUOTES, 'UTF-8') ?>')">
+                                <button class="btn-view" onclick="openDrawer('<?= htmlspecialchars($profileId, ENT_QUOTES, 'UTF-8') ?>', '<?= $type ?>')">
                                     <i class='bx bx-show'></i> View
                                 </button>
                             </td>
@@ -934,10 +1176,10 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="5" style="text-align: center; padding: 40px;">
+                        <td colspan="7" style="text-align: center; padding: 40px;">
                             <div class="empty-state">
                                 <i class='bx bx-check-circle'></i>
-                                <h3>No Tourist Registrations Found</h3>
+                                <h3>No Registrations Found</h3>
                                 <p>No registrations found matching your criteria.</p>
                             </div>
                         </td>
@@ -950,11 +1192,11 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
         <?php if ($totalPages > 1): ?>
             <div class="pagination">
                 <div class="pagination-info">
-                    Showing <?= $offset + 1 ?>-<?= min($offset + $perPage, $totalTourists) ?> of <?= $totalTourists ?>
+                    Showing <?= $offset + 1 ?>-<?= min($offset + $perPage, $totalItems) ?> of <?= $totalItems ?>
                 </div>
                 <div class="pagination-links">
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>">&larr;</a>
+                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>">&larr;</a>
                     <?php else: ?>
                         <span class="disabled">&larr;</span>
                     <?php endif; ?>
@@ -963,14 +1205,14 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
                         <?php if ($i === $page): ?>
                             <span class="active"><?= $i ?></span>
                         <?php elseif ($i === 1 || $i === $totalPages || abs($i - $page) <= 1): ?>
-                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>"><?= $i ?></a>
+                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>"><?= $i ?></a>
                         <?php elseif ($i === $page - 2 || $i === $page + 2): ?>
                             <span>...</span>
                         <?php endif; ?>
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>">&rarr;</a>
+                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>">&rarr;</a>
                     <?php else: ?>
                         <span class="disabled">&rarr;</span>
                     <?php endif; ?>
@@ -979,6 +1221,15 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
         <?php endif; ?>
     </div>
 
+</div>
+
+<!-- =========================================================
+     IMAGE VIEWER (Lightbox)
+========================================================= -->
+<div class="image-viewer-overlay" id="imageViewer" onclick="closeImageViewer()">
+    <button class="close-btn" onclick="closeImageViewer()">&times;</button>
+    <img class="viewer-image" id="viewerImage" src="" alt="Evidence">
+    <div class="viewer-info">Click anywhere or press ESC to close</div>
 </div>
 
 <!-- =========================================================
@@ -991,7 +1242,7 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
 <!-- Drawer Panel -->
 <div class="drawer-panel" id="drawerPanel">
     <div class="drawer-header">
-        <h2><i class='bx bx-detail'></i> Tourist Details</h2>
+        <h2><i class='bx bx-detail'></i> Registration Details</h2>
         <button class="drawer-close" onclick="closeDrawer()">&times;</button>
     </div>
     <div class="drawer-body" id="drawerBody">
@@ -1006,13 +1257,28 @@ render_admin_start('Approve Tourist Registrations', $admin, 'dashboard');
 </div>
 
 <script>
-// Tourists data for drawer
-const touristsData = <?= json_encode($tourists) ?>;
+// Items data for drawer
+const itemsData = <?= json_encode($items) ?>;
 
-function openDrawer(profileId) {
-    const tourist = touristsData.find(r => r.profile_id === profileId);
-    if (!tourist) {
-        alert('Tourist not found');
+function openImagePreview(url) {
+    const viewer = document.getElementById('imageViewer');
+    const viewerImage = document.getElementById('viewerImage');
+    viewerImage.src = url;
+    viewer.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImageViewer() {
+    const viewer = document.getElementById('imageViewer');
+    viewer.classList.remove('active');
+    document.body.style.overflow = '';
+    document.getElementById('viewerImage').src = '';
+}
+
+function openDrawer(profileId, type) {
+    const item = itemsData.find(r => r.profile_id === profileId && r._type === type);
+    if (!item) {
+        alert('Record not found');
         return;
     }
 
@@ -1022,7 +1288,7 @@ function openDrawer(profileId) {
     const footer = document.getElementById('drawerFooter');
 
     // Determine status
-    const statusLower = (tourist.verification_status || '').toLowerCase();
+    const statusLower = (item.verification_status || '').toLowerCase();
     const isPending = statusLower === 'pending';
     const isApproved = statusLower === 'approved';
     const isRejected = statusLower === 'rejected';
@@ -1039,39 +1305,76 @@ function openDrawer(profileId) {
         'approved': 'Approved',
         'rejected': 'Rejected'
     };
-    const statusDisplay = statusDisplayMap[statusLower] || tourist.verification_status || 'Pending Review';
+    const statusDisplay = statusDisplayMap[statusLower] || item.verification_status || 'Pending Review';
+
+    const typeIcon = item._icon || '🛂';
+    const displayName = item._display_name || 'Tourist';
+    
+    const photoFront = item._photo_front || null;
+    const photoBack = item._photo_back || null;
+
+    // Build photo HTML
+    let photoHtml = '';
+    if (photoFront || photoBack) {
+        photoHtml = '<div class="photo-grid">';
+        if (photoFront) {
+            photoHtml += `<img src="${photoFront}" alt="Front" onclick="openImagePreview('${photoFront}')" style="cursor:pointer;">`;
+        } else {
+            photoHtml += `<div class="no-photo">No Front Photo</div>`;
+        }
+        if (photoBack) {
+            photoHtml += `<img src="${photoBack}" alt="Back" onclick="openImagePreview('${photoBack}')" style="cursor:pointer;">`;
+        } else {
+            photoHtml += `<div class="no-photo">No Back Photo</div>`;
+        }
+        photoHtml += '</div>';
+    } else {
+        photoHtml = '<div class="no-photo" style="padding:40px;text-align:center;border:1px solid #e5e7eb;border-radius:8px;">No photos uploaded</div>';
+    }
 
     // Build detail content
     body.innerHTML = `
         <div class="detail-section">
+            <span class="detail-label">Type</span>
+            <div class="detail-value">
+                <span class="type-badge ${type === 'tourist' ? 'type-tourist' : 'type-citizen'}">
+                    ${typeIcon} ${displayName}
+                </span>
+            </div>
+        </div>
+
+        <div class="detail-section">
             <span class="detail-label">Profile ID</span>
-            <div class="detail-value" style="font-weight: 600; font-family: monospace;">${tourist.profile_id || 'N/A'}</div>
+            <div class="detail-value" style="font-weight: 600; font-family: monospace;">${item.profile_id || 'N/A'}</div>
         </div>
 
-        <div class="detail-section">
-            <span class="detail-label">Passport Number</span>
-            <div class="detail-value" style="font-weight: 600;">${tourist.passport_number || 'N/A'}</div>
-        </div>
-
-        <div class="detail-section">
-            <span class="detail-label">Passport Issuing Country</span>
-            <div class="detail-value">${tourist.passport_issuing_country || 'N/A'}</div>
-        </div>
-
-        <div class="detail-section">
-            <span class="detail-label">Passport Issue Date</span>
-            <div class="detail-value">${tourist.passport_issue_date || 'N/A'}</div>
-        </div>
-
-        <div class="detail-section">
-            <span class="detail-label">Passport Expiry Date</span>
-            <div class="detail-value" style="color: ${tourist.passport_expiry_date ? new Date(tourist.passport_expiry_date) < new Date() ? '#dc3545' : '#10b981' : '#6b7280'};">${tourist.passport_expiry_date || 'N/A'}</div>
-        </div>
-
-        <div class="detail-section">
-            <span class="detail-label">Country of Residence</span>
-            <div class="detail-value">${tourist.country_of_residence || 'N/A'}</div>
-        </div>
+        ${type === 'tourist' ? `
+            <div class="detail-section">
+                <span class="detail-label">Passport Number</span>
+                <div class="detail-value" style="font-weight: 600;">${item.passport_number || 'N/A'}</div>
+            </div>
+            <div class="detail-section">
+                <span class="detail-label">Passport Issuing Country</span>
+                <div class="detail-value">${item.passport_issuing_country || 'N/A'}</div>
+            </div>
+            <div class="detail-section">
+                <span class="detail-label">Passport Issue Date</span>
+                <div class="detail-value">${item.passport_issue_date || 'N/A'}</div>
+            </div>
+            <div class="detail-section">
+                <span class="detail-label">Passport Expiry Date</span>
+                <div class="detail-value" style="color: ${item.passport_expiry_date ? new Date(item.passport_expiry_date) < new Date() ? '#dc3545' : '#10b981' : '#6b7280'};">${item.passport_expiry_date || 'N/A'}</div>
+            </div>
+            <div class="detail-section">
+                <span class="detail-label">Country of Residence</span>
+                <div class="detail-value">${item.country_of_residence || 'N/A'}</div>
+            </div>
+        ` : `
+            <div class="detail-section">
+                <span class="detail-label">IC Number (MyKad)</span>
+                <div class="detail-value" style="font-weight: 600;">${item.ic_number || 'N/A'}</div>
+            </div>
+        `}
 
         <hr class="detail-divider">
 
@@ -1080,16 +1383,23 @@ function openDrawer(profileId) {
             <div><span class="status-badge ${statusClass}">${statusDisplay}</span></div>
         </div>
 
-        ${tourist.rejection_reason ? `
+        ${item.rejection_reason ? `
             <div class="detail-section">
                 <span class="detail-label">Rejection Reason</span>
-                <div class="detail-value" style="background: #fee2e2; padding: 12px; border-radius: 8px; color: #991b1b;">${tourist.rejection_reason}</div>
+                <div class="detail-value" style="background: #fee2e2; padding: 12px; border-radius: 8px; color: #991b1b;">${item.rejection_reason}</div>
             </div>
         ` : ''}
 
         <div class="detail-section">
             <span class="detail-label">Verified At</span>
-            <div class="detail-value">${tourist.verified_at ? new Date(tourist.verified_at).toLocaleString() : 'Not verified yet'}</div>
+            <div class="detail-value">${item.verified_at ? new Date(item.verified_at).toLocaleString() : 'Not verified yet'}</div>
+        </div>
+
+        <hr class="detail-divider">
+
+        <div class="detail-section">
+            <span class="detail-label">📸 Photos</span>
+            <div style="margin-top: 8px;">${photoHtml}</div>
         </div>
     `;
 
@@ -1097,17 +1407,19 @@ function openDrawer(profileId) {
     if (isPending) {
         footer.innerHTML = `
             <form method="post" style="flex: 1; min-width: 120px;" 
-                  onsubmit="return confirm('Approve this tourist?')">
-                <input type="hidden" name="profile_id" value="${tourist.profile_id}">
+                  onsubmit="return confirm('Approve this ${displayName}?')">
+                <input type="hidden" name="profile_id" value="${item.profile_id}">
                 <input type="hidden" name="decision" value="approve">
+                <input type="hidden" name="type" value="${type}">
                 <button type="submit" class="btn-approve-lg">
                     <i class='bx bx-check'></i> Approve
                 </button>
             </form>
             <form method="post" style="flex: 1; min-width: 120px;" 
-                  onsubmit="return confirm('Reject this tourist?')">
-                <input type="hidden" name="profile_id" value="${tourist.profile_id}">
+                  onsubmit="return confirm('Reject this ${displayName}?')">
+                <input type="hidden" name="profile_id" value="${item.profile_id}">
                 <input type="hidden" name="decision" value="reject">
+                <input type="hidden" name="type" value="${type}">
                 <button type="submit" class="btn-reject-lg">
                     <i class='bx bx-x'></i> Reject
                 </button>
@@ -1139,12 +1451,9 @@ function closeDrawer() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeDrawer();
+        closeImageViewer();
     }
 });
-
-function exportTable() {
-    alert('Export functionality will be implemented here.');
-}
 </script>
 
 <?php

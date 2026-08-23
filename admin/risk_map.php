@@ -320,11 +320,11 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 }
 
 /* =========================================================
-   STATS CARDS - MODERN
+   STATS CARDS
 ========================================================= */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
 }
 
@@ -378,7 +378,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 .stat-low .stat-number { color: #28a745; }
 
 /* =========================================================
-   FILTER BAR - MODERN
+   FILTER BAR
 ========================================================= */
 .filter-bar {
     display: flex;
@@ -540,7 +540,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 }
 
 /* =========================================================
-   LEGEND - MODERN
+   LEGEND
 ========================================================= */
 .map-legend {
     display: flex;
@@ -682,7 +682,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 }
 
 /* =========================================================
-   TABLE - MODERN
+   TABLE
 ========================================================= */
 .table-wrapper {
     overflow-x: auto;
@@ -923,9 +923,8 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     <!-- HEADER -->
     <section class="risk-map-header">
         <div>
-            <h1><i class='bx bx-map'></i> Predictive Risk Map</h1>
             <div class="subtitle">
-                <p>View and analyse current risk zones in <strong>Kuala Lumpur, Malaysia</strong></p>
+                <p>View and analyse validated incident reports in <strong>Kuala Lumpur, Malaysia</strong></p>
                 <span class="badge-validated">✅ Validated Only</span>
             </div>
         </div>
@@ -953,29 +952,19 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             <span class="stat-icon">🔴</span>
             <span class="stat-number"><?= $metrics['red_zones'] ?></span>
             <span class="stat-label">Red Zones</span>
-            <span class="stat-percent"><?= $metrics['red_percentage'] ?>% of total</span>
+            <span class="stat-percent"><?= $metrics['red_percentage'] ?>%</span>
         </div>
         <div class="stat-card stat-orange">
             <span class="stat-icon">🟠</span>
             <span class="stat-number"><?= $metrics['orange_zones'] ?></span>
             <span class="stat-label">Orange Zones</span>
-            <span class="stat-percent"><?= $metrics['orange_percentage'] ?>% of total</span>
+            <span class="stat-percent"><?= $metrics['orange_percentage'] ?>%</span>
         </div>
         <div class="stat-card stat-green">
             <span class="stat-icon">🟢</span>
             <span class="stat-number"><?= $metrics['green_zones'] ?></span>
             <span class="stat-label">Green Zones</span>
-            <span class="stat-percent"><?= $metrics['green_percentage'] ?>% of total</span>
-        </div>
-        <div class="stat-card stat-high">
-            <span class="stat-icon">⚠️</span>
-            <span class="stat-number"><?= $metrics['high_risk_reports'] ?></span>
-            <span class="stat-label">High Risk Reports</span>
-        </div>
-        <div class="stat-card stat-low">
-            <span class="stat-icon">✅</span>
-            <span class="stat-number"><?= $metrics['low_risk_reports'] ?></span>
-            <span class="stat-label">Low Risk Reports</span>
+            <span class="stat-percent"><?= $metrics['green_percentage'] ?>%</span>
         </div>
     </section>
 
@@ -997,8 +986,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                 <select name="sort_by" class="filter-input">
                     <option value="created_desc" <?= $sortBy === 'created_desc' ? 'selected' : '' ?>>Newest First</option>
                     <option value="created_asc" <?= $sortBy === 'created_asc' ? 'selected' : '' ?>>Oldest First</option>
-                    <option value="count_desc" <?= $sortBy === 'count_desc' ? 'selected' : '' ?>>Most Reports</option>
-                    <option value="count_asc" <?= $sortBy === 'count_asc' ? 'selected' : '' ?>>Least Reports</option>
                 </select>
                 
                 <button type="submit" class="btn-filter btn-filter-primary">
@@ -1045,7 +1032,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     <!-- DATA TABLE + CHART -->
     <section class="data-section">
         <div class="data-section-header">
-            <h3><i class='bx bx-data'></i> Validated Report Data</h3>
+            <h3><i class='bx bx-data'></i> Validated Incident Reports</h3>
             <span class="count-badge"><?= count($validatedReports) ?> validated reports</span>
         </div>
 
@@ -1079,7 +1066,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             </div>
         </div>
 
-        <!-- Table -->
+       <!-- Table -->
         <div class="table-wrapper">
             <table class="data-table">
                 <thead>
@@ -1093,35 +1080,36 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (!empty($validatedReports)): ?>
-                        <?php foreach ($validatedReports as $report): ?>
-                            <?php
-                            $urgency = $report['urgency_level'] ?? 'Normal';
-                            $riskMap = ['High' => 'Red', 'Medium' => 'Orange', 'Normal' => 'Green'];
-                            $riskLevel = $riskMap[$urgency] ?? 'Green';
+                    <?php if (!empty($zones)): ?>
+                        <?php foreach ($zones as $zone): ?>
+                            <?php 
+                            $riskLevel = $zone['risk'];
                             $riskTagClass = match($riskLevel) {
                                 'Red' => 'risk-tag-red',
                                 'Orange' => 'risk-tag-orange',
                                 default => 'risk-tag-green'
                             };
-                            $createdAt = $report['created_at'] ?? '';
-                            $formattedDate = 'N/A';
-                            if ($createdAt !== '') {
-                                try {
-                                    $formattedDate = date('d M Y H:i', strtotime($createdAt));
-                                } catch (Throwable $e) {
-                                    $formattedDate = $createdAt;
-                                }
-                            }
                             ?>
-                            <tr>
-                                <td><strong><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></strong></td>
-                                <td><?= htmlspecialchars($report['location'] ?? 'N/A') ?></td>
-                                <td><span class="risk-tag <?= $riskTagClass ?>"><?= htmlspecialchars($riskLevel) ?></span></td>
-                                <td><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
-                                <td><span class="status-tag-validated">Validated</span></td>
-                                <td><?= htmlspecialchars($formattedDate) ?></td>
-                            </tr>
+                            <?php foreach ($zone['reports'] as $report): ?>
+                                <?php
+                                $formattedDate = 'N/A';
+                                if (!empty($report['created_at'])) {
+                                    try {
+                                        $formattedDate = date('d M Y H:i', strtotime($report['created_at']));
+                                    } catch (Throwable $e) {
+                                        $formattedDate = $report['created_at'];
+                                    }
+                                }
+                                ?>
+                                <tr>
+                                    <td><strong><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></strong></td>
+                                    <td><?= htmlspecialchars($zone['name'] ?? 'N/A') ?></td>
+                                    <td><span class="risk-tag <?= $riskTagClass ?>"><?= htmlspecialchars($riskLevel) ?></span></td>
+                                    <td><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
+                                    <td><span class="status-tag-validated">Validated</span></td>
+                                    <td><?= htmlspecialchars($formattedDate) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
@@ -1131,8 +1119,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                 </tbody>
             </table>
         </div>
-    </section>
-</div>
 
 <!-- =========================================================
      PDF CONTENT (Hidden)
@@ -1188,32 +1174,33 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($validatedReports as $report): ?>
-                <?php
-                $urgency = $report['urgency_level'] ?? 'Normal';
-                $riskMap = ['High' => 'Red', 'Medium' => 'Orange', 'Normal' => 'Green'];
-                $riskLevel = $riskMap[$urgency] ?? 'Green';
-                $createdAt = $report['created_at'] ?? '';
-                $formattedDate = 'N/A';
-                if ($createdAt !== '') {
-                    try {
-                        $formattedDate = date('d M Y H:i', strtotime($createdAt));
-                    } catch (Throwable $e) {
-                        $formattedDate = $createdAt;
-                    }
-                }
-                ?>
-                <tr>
-                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></td>
-                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['location'] ?? 'N/A') ?></td>
-                    <td style="padding:6px;border:1px solid #e5e7eb;font-weight:600;color:<?= $riskLevel === 'Red' ? '#dc3545' : ($riskLevel === 'Orange' ? '#fd7e14' : '#28a745') ?>;">
-                        <?= $riskLevel ?>
-                    </td>
-                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
-                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($formattedDate) ?></td>
-                </tr>
-            <?php endforeach; ?>
-            <?php if (empty($validatedReports)): ?>
+            <?php if (!empty($zones)): ?>
+                <?php foreach ($zones as $zone): ?>
+                    <?php $zoneRisk = $zone['risk']; ?>
+                    <?php foreach ($zone['reports'] as $report): ?>
+                        <?php
+                        $createdAt = $report['created_at'] ?? '';
+                        $formattedDate = 'N/A';
+                        if ($createdAt !== '') {
+                            try {
+                                $formattedDate = date('d M Y H:i', strtotime($createdAt));
+                            } catch (Throwable $e) {
+                                $formattedDate = $createdAt;
+                            }
+                        }
+                        ?>
+                        <tr>
+                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></td>
+                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($zone['name'] ?? 'N/A') ?></td>
+                            <td style="padding:6px;border:1px solid #e5e7eb;font-weight:600;color:<?= $zoneRisk === 'Red' ? '#dc3545' : ($zoneRisk === 'Orange' ? '#fd7e14' : '#28a745') ?>;">
+                                <?= $zoneRisk ?>
+                            </td>
+                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
+                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($formattedDate) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endforeach; ?>
+            <?php else: ?>
                 <tr>
                     <td colspan="5" style="padding:20px;text-align:center;color:#6b7280;">No validated reports</td>
                 </tr>
@@ -1222,7 +1209,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     </table>
     
     <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:15px;">
-        Generated on <?= date('d M Y H:i') ?> | Predictive Zoning Dashboard
+        Generated on <?= date('d M Y H:i') ?> | Risk Map Dashboard
     </p>
 </div>
 
