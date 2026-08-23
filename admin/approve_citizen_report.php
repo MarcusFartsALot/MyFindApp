@@ -19,8 +19,14 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 10;
 $offset = ($page - 1) * $perPage;
 
-// Status filter
+// ============================================================
+// FR3.5: Advanced Filtering & Search - Filter Parameters
+// ============================================================
 $statusFilter = $_GET['status'] ?? 'all';
+$urgencyFilter = $_GET['urgency'] ?? 'all';
+$dateFrom = $_GET['date_from'] ?? '';
+$dateTo = $_GET['date_to'] ?? '';
+$searchQuery = trim($_GET['search'] ?? '');
 
 /*
 |--------------------------------------------------------------------------
@@ -110,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $actionMessage = 'Citizen report has been rejected successfully.';
             }
 
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&page=' . $page);
+            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&urgency=' . $urgencyFilter . '&date_from=' . $dateFrom . '&date_to=' . $dateTo . '&search=' . urlencode($searchQuery) . '&page=' . $page);
             exit;
 
         } catch (Throwable $e) {
@@ -130,7 +136,6 @@ function getFullStorageUrl($path) {
     if (empty($path)) return null;
     if (filter_var($path, FILTER_VALIDATE_URL)) return $path;
     
-    // 如果路径已经包含 bucket 名称
     if (strpos($path, 'incident-evidence/') === 0) {
         return rtrim($supabaseUrl, '/') . '/storage/v1/object/public/' . $path;
     }
@@ -140,7 +145,7 @@ function getFullStorageUrl($path) {
 
 /*
 |--------------------------------------------------------------------------
-| Load Citizen Reports with Stats
+| Load Citizen Reports with Stats & Filters
 |--------------------------------------------------------------------------
 */
 
@@ -153,6 +158,7 @@ $resolvedCount = 0;
 $supabaseUrl = 'https://kfvhnpkkwxipschhlouk.supabase.co';
 
 try {
+    // First, get all reports for statistics
     $allReports = $client->asService(
         'GET',
         '/rest/v1/incident_reports?select=*&order=created_at.desc'
@@ -174,8 +180,14 @@ try {
         }
     }
 
+    // Build query with filters
     $query = '/rest/v1/incident_reports?select=*&order=created_at.desc';
     
+    // ============================================================
+    // FR3.5: Apply Filters
+    // ============================================================
+    
+    // 1. Status Filter
     if ($statusFilter !== 'all') {
         $statusMap = [
             'pending' => 'Pending Review',
@@ -187,6 +199,19 @@ try {
         }
     }
     
+    // 2. Urgency Filter (FR3.5)
+    if ($urgencyFilter !== 'all') {
+        $query .= '&urgency_level=eq.' . rawurlencode($urgencyFilter);
+    }
+    
+    // 3. Date Range Filter (FR3.5)
+    if ($dateFrom !== '') {
+        $query .= '&created_at=gte.' . rawurlencode($dateFrom . 'T00:00:00Z');
+    }
+    if ($dateTo !== '') {
+        $query .= '&created_at=lte.' . rawurlencode($dateTo . 'T23:59:59Z');
+    }
+    
     $query .= '&limit=' . $perPage . '&offset=' . $offset;
     
     $reports = $client->asService('GET', $query);
@@ -194,8 +219,24 @@ try {
     if (!is_array($reports)) {
         $reports = [];
     }
+    
+    // ============================================================
+    // FR3.5: Search Filter (in PHP - keyword search)
+    // ============================================================
+    if ($searchQuery !== '') {
+        $reports = array_values(array_filter($reports, function($report) use ($searchQuery) {
+            $searchLower = strtolower($searchQuery);
+            $ticketId = strtolower($report['ticket_id'] ?? '');
+            $fullName = strtolower($report['full_name'] ?? '');
+            $location = strtolower($report['location'] ?? '');
+            
+            return strpos($ticketId, $searchLower) !== false ||
+                   strpos($fullName, $searchLower) !== false ||
+                   strpos($location, $searchLower) !== false;
+        }));
+    }
 
-    // 按 urgency_level 排序
+    // Sort by urgency_level (Emergency > High > Normal)
     usort($reports, function($a, $b) {
         $urgencyOrder = [
             'Emergency' => 0,
@@ -216,12 +257,10 @@ try {
     foreach ($reports as &$report) {
         if (isset($report['media_paths']) && is_array($report['media_paths'])) {
             $report['media_urls'] = array_map(function($path) use ($supabaseUrl) {
-                // 获取文件扩展名
                 $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                 $isVideo = in_array($extension, ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv', '3gp']);
                 $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
                 
-                // 使用 getFullStorageUrl 生成完整 URL
                 $url = getFullStorageUrl($path);
                 
                 return [
@@ -354,25 +393,32 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 .stat-resolved .stat-number { color: #10b981; }
 
 /* =========================================================
-   FILTER & EXPORT
+   FILTER & EXPORT - Enhanced (FR3.5)
 ========================================================= */
 .filter-bar {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
     gap: 12px;
-    flex-wrap: wrap;
-    padding: 14px 18px;
+    padding: 16px 18px;
     background: white;
     border-radius: 14px;
     border: 1px solid #f1f3f5;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
+.filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
 .filter-group {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+    align-items: center;
 }
 
 .filter-btn {
@@ -417,24 +463,127 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     border-color: #10b981;
 }
 
-.export-btn {
-    padding: 6px 16px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
-    cursor: pointer;
-    font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    text-decoration: none;
-    color: #4b5563;
-    transition: all 0.2s;
-    font-weight: 500;
+.filter-btn.active-urgency {
+    background: #8b5cf6;
+    color: white;
+    border-color: #8b5cf6;
 }
 
-.export-btn:hover {
+.filter-divider {
+    color: #e5e7eb;
+    font-size: 18px;
+    padding: 0 2px;
+}
+
+.filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.filter-input {
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 12px;
+    background: white;
+    transition: border-color 0.2s;
+    color: #1a1a2e;
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: #1a1a2e;
+    box-shadow: 0 0 0 3px rgba(26,26,46,0.08);
+}
+
+.filter-input-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: white;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.btn-filter {
+    padding: 6px 16px;
+    font-size: 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-filter-primary {
+    background: #1a1a2e;
+    color: white;
+}
+
+.btn-filter-primary:hover {
+    background: #2d2d4e;
+}
+
+.btn-filter-outline {
+    background: white;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+
+.btn-filter-outline:hover {
     background: #f3f4f6;
+}
+
+.btn-filter-reset {
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+
+.btn-filter-reset:hover {
+    background: #e5e7eb;
+}
+
+/* Active filters badges */
+.active-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+}
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #4b5563;
+}
+
+.filter-badge .remove {
+    cursor: pointer;
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+.filter-badge .remove:hover {
+    color: #dc3545;
 }
 
 /* =========================================================
@@ -507,6 +656,29 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 }
 
 .status-validated {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.urgency-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.urgency-emergency {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.urgency-high {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.urgency-normal {
     background: #d1fae5;
     color: #065f46;
 }
@@ -1053,10 +1225,9 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
         padding: 10px 12px;
     }
     
-    .filter-bar {
+    .filter-row {
         flex-direction: column;
         align-items: stretch;
-        gap: 10px;
     }
     
     .filter-group {
@@ -1119,6 +1290,10 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
         padding: 8px 10px;
         font-size: 11px;
     }
+    
+    .filter-input {
+        width: 100%;
+    }
 }
 </style>
 
@@ -1162,35 +1337,120 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     <!-- STATS CARDS -->
     <section class="stats-grid">
         <div class="stat-card stat-total">
-            <span class="stat-icon">📊</span>
             <span class="stat-number"><?= $totalReports ?></span>
             <span class="stat-label">Total Reports</span>
         </div>
         <div class="stat-card stat-pending">
-            <span class="stat-icon">⏳</span>
             <span class="stat-number"><?= $pendingCount ?></span>
             <span class="stat-label">Pending Review</span>
         </div>
         <div class="stat-card stat-rejected">
-            <span class="stat-icon">❌</span>
             <span class="stat-number"><?= $rejectedCount ?></span>
             <span class="stat-label">Rejected</span>
         </div>
         <div class="stat-card stat-resolved">
-            <span class="stat-icon">✅</span>
             <span class="stat-number"><?= $resolvedCount ?></span>
             <span class="stat-label">Resolved</span>
         </div>
     </section>
 
-    <!-- FILTER & EXPORT -->
+    <!-- ============================================================
+         FILTER BAR - Enhanced (FR3.5)
+    ============================================================ -->
     <div class="filter-bar">
-        <div class="filter-group">
-            <a href="?status=all&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
-            <a href="?status=pending&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">⏳ Pending</a>
-            <a href="?status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
-            <a href="?status=resolved&page=1" class="filter-btn <?= $statusFilter === 'resolved' ? 'active-resolved' : '' ?>">✅ Resolved</a>
+        <!-- Row 1: Status Filters -->
+        <div class="filter-row">
+            <div class="filter-group">
+                <span class="filter-label">Status:</span>
+                <a href="?status=all&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
+                <a href="?status=pending&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">Pending</a>
+                <a href="?status=rejected&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">Rejected</a>
+                <a href="?status=resolved&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'resolved' ? 'active-resolved' : '' ?>">Resolved</a>
+            </div>
         </div>
+
+        <!-- Row 2: Advanced Filters (FR3.5) -->
+        <div class="filter-row">
+            <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;" id="filterForm">
+                <!-- Hidden fields to preserve filters -->
+                <input type="hidden" name="status" value="<?= $statusFilter ?>">
+
+                <!-- Urgency Filter (FR3.5) -->
+                <div class="filter-group">
+                    <span class="filter-label">Urgency:</span>
+                    <select name="urgency" class="filter-input filter-input-sm" onchange="this.form.submit()">
+                        <option value="all" <?= $urgencyFilter === 'all' ? 'selected' : '' ?>>All Urgency</option>
+                        <option value="Emergency" <?= $urgencyFilter === 'Emergency' ? 'selected' : '' ?>>Emergency</option>
+                        <option value="High" <?= $urgencyFilter === 'High' ? 'selected' : '' ?>>High</option>
+                        <option value="Normal" <?= $urgencyFilter === 'Normal' ? 'selected' : '' ?>>Normal</option>
+                    </select>
+                </div>
+
+                <!-- Date Range Filter (FR3.5) -->
+                <div class="filter-group">
+                    <span class="filter-label">Date:</span>
+                    <input type="date" name="date_from" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateFrom) ?>" placeholder="From">
+                    <span style="font-size:12px;color:#6b7280;">→</span>
+                    <input type="date" name="date_to" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateTo) ?>" placeholder="To">
+                </div>
+
+                <!-- Search (FR3.5) -->
+                <div class="filter-group">
+                    <span class="filter-label">Search:</span>
+                    <input type="text" name="search" class="filter-input filter-input-sm" placeholder="Ticket ID or Name..." value="<?= htmlspecialchars($searchQuery) ?>" style="min-width:160px;">
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="filter-actions">
+                    <button type="submit" class="btn-filter btn-filter-primary">
+                        <i class='bx bx-filter'></i> Apply
+                    </button>
+                    <a href="approve_citizen_report.php" class="btn-filter btn-filter-reset">
+                        <i class='bx bx-reset'></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Active Filters Display (FR3.5) -->
+        <?php if ($statusFilter !== 'all' || $urgencyFilter !== 'all' || $dateFrom !== '' || $dateTo !== '' || $searchQuery !== ''): ?>
+            <div class="active-filters">
+                <span style="font-size:11px;color:#6b7280;font-weight:500;">Active Filters:</span>
+                <?php if ($statusFilter !== 'all'): ?>
+                    <span class="filter-badge">
+                        Status: <?= ucfirst($statusFilter) ?>
+                        <span class="remove" onclick="removeFilter('status')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($urgencyFilter !== 'all'): ?>
+                    <span class="filter-badge" style="background:#ede9fe;color:#5b21b6;">
+                        Urgency: <?= htmlspecialchars($urgencyFilter) ?>
+                        <span class="remove" onclick="removeFilter('urgency')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($dateFrom !== ''): ?>
+                    <span class="filter-badge">
+                        From: <?= htmlspecialchars($dateFrom) ?>
+                        <span class="remove" onclick="removeFilter('date_from')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($dateTo !== ''): ?>
+                    <span class="filter-badge">
+                        To: <?= htmlspecialchars($dateTo) ?>
+                        <span class="remove" onclick="removeFilter('date_to')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($searchQuery !== ''): ?>
+                    <span class="filter-badge" style="background:#fef3c7;color:#92400e;">
+                        Search: "<?= htmlspecialchars($searchQuery) ?>"
+                        <span class="remove" onclick="removeFilter('search')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <a href="approve_citizen_report.php" style="font-size:11px;color:#dc3545;text-decoration:none;font-weight:500;">
+                    <i class='bx bx-x'></i> Clear All
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 
     <!-- TABLE -->
@@ -1199,8 +1459,10 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
             <thead>
                 <tr>
                     <th>Ticket ID</th>
+                    <th>Name</th>
                     <th>Category</th>
                     <th>District</th>
+                    <th>Urgency</th>
                     <th>Submitted</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -1212,10 +1474,12 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                         <?php
                         $reportId = (string)($report['id'] ?? '');
                         $ticketId = (string)($report['ticket_id'] ?? 'N/A');
+                        $fullName = (string)($report['full_name'] ?? 'N/A');
                         $category = (string)($report['category'] ?? 'N/A');
                         $location = (string)($report['location'] ?? 'N/A');
                         $status = (string)($report['status'] ?? 'Pending Review');
                         $createdAt = (string)($report['created_at'] ?? '');
+                        $urgencyLevel = (string)($report['urgency_level'] ?? 'Normal');
                         
                         $statusLower = strtolower($status);
 
@@ -1232,6 +1496,13 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                             default => $status
                         };
 
+                        // Urgency badge
+                        $urgencyClass = match($urgencyLevel) {
+                            'Emergency' => 'urgency-emergency',
+                            'High' => 'urgency-high',
+                            default => 'urgency-normal'
+                        };
+
                         $formattedDate = 'N/A';
                         if ($createdAt !== '') {
                             try {
@@ -1243,8 +1514,14 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                         ?>
                         <tr>
                             <td class="ticket-id"><?= htmlspecialchars($ticketId, ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars($category, ENT_QUOTES, 'UTF-8') ?></td>
                             <td><?= htmlspecialchars($location, ENT_QUOTES, 'UTF-8') ?></td>
+                            <td>
+                                <span class="urgency-badge <?= $urgencyClass ?>">
+                                    <?= htmlspecialchars($urgencyLevel, ENT_QUOTES, 'UTF-8') ?>
+                                </span>
+                            </td>
                             <td><?= htmlspecialchars($formattedDate, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <span class="status-badge <?= $statusClass ?>">
@@ -1260,11 +1537,11 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px;">
+                        <td colspan="8" style="text-align: center; padding: 40px;">
                             <div class="empty-state">
                                 <i class='bx bx-check-circle'></i>
                                 <h3>No Citizen Reports Found</h3>
-                                <p>No reports found matching your criteria.</p>
+                                <p>No reports found matching your criteria. Try adjusting your filters.</p>
                             </div>
                         </td>
                     </tr>
@@ -1280,7 +1557,7 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                 </div>
                 <div class="pagination-links">
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>">&larr;</a>
+                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&larr;</a>
                     <?php else: ?>
                         <span class="disabled">&larr;</span>
                     <?php endif; ?>
@@ -1289,14 +1566,14 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
                         <?php if ($i === $page): ?>
                             <span class="active"><?= $i ?></span>
                         <?php elseif ($i === 1 || $i === $totalPages || abs($i - $page) <= 1): ?>
-                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>"><?= $i ?></a>
+                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>"><?= $i ?></a>
                         <?php elseif ($i === $page - 2 || $i === $page + 2): ?>
                             <span>...</span>
                         <?php endif; ?>
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>">&rarr;</a>
+                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&urgency=<?= $urgencyFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&rarr;</a>
                     <?php else: ?>
                         <span class="disabled">&rarr;</span>
                     <?php endif; ?>
@@ -1357,6 +1634,16 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 const reportsData = <?= json_encode($reports) ?>;
 const supabaseUrl = '<?= $supabaseUrl ?>';
 
+// ============================================================
+// FR3.5: Remove filter function
+// ============================================================
+function removeFilter(filterName) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(filterName);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+}
+
 function openDrawer(reportId) {
     const report = reportsData.find(r => r.id === reportId);
     if (!report) {
@@ -1413,12 +1700,11 @@ function openDrawer(reportId) {
                 </div>
                 <div class="map-container">
                     <iframe 
-                        src="https://www.openstreetmap.org/export/embed.html?bbox=${lngMin}%2C${latMin}%2C${lngMax}%2C${latMax}&layer=mapnik&marker=${latFixed}%2C${lngFixed}"
+                        src="https://www.google.com/maps?q=${lat},${lng}&z=15&output=embed"
                         width="100%" 
                         height="280" 
                         style="border:0;"
                         loading="lazy"
-                        title="Report location on OpenStreetMap"
                     ></iframe>
                 </div>
                 <a href="https://www.google.com/maps?q=${lat},${lng}" 
@@ -1429,7 +1715,7 @@ function openDrawer(reportId) {
         `;
     }
 
-    // ✅ 生成 Evidence HTML - 支持图片和视频
+    // Generate Evidence HTML - supports images and videos
     let evidenceHtml = '';
     if (report.media_urls && report.media_urls.length > 0) {
         let imageCount = 0;
@@ -1506,6 +1792,11 @@ function openDrawer(reportId) {
         </div>
 
         <div class="detail-section">
+            <span class="detail-label">Full Name</span>
+            <div class="detail-value">${report.full_name || 'N/A'}</div>
+        </div>
+
+        <div class="detail-section">
             <span class="detail-label">Category</span>
             <div class="detail-value">${report.category || 'N/A'}</div>
         </div>
@@ -1526,11 +1817,6 @@ function openDrawer(reportId) {
         </div>
 
         <hr class="detail-divider">
-
-        <div class="detail-section">
-            <span class="detail-label">Full Name</span>
-            <div class="detail-value">${report.full_name || 'N/A'}</div>
-        </div>
 
         <div class="detail-section">
             <span class="detail-label">Phone Number</span>
@@ -1558,8 +1844,8 @@ function openDrawer(reportId) {
         <div class="detail-section">
             <span class="detail-label">Urgency Level</span>
             <div class="detail-value">
-                ${report.urgency_level === 'High' ? '🔴 High' : 
-                  report.urgency_level === 'Medium' ? '🟡 Medium' : 
+                ${report.urgency_level === 'Emergency' ? '🔴 Emergency' : 
+                  report.urgency_level === 'High' ? '🟠 High' : 
                   '🟢 Normal'}
             </div>
         </div>
@@ -1650,17 +1936,13 @@ function openVideoViewer(videoUrl) {
     const video = document.getElementById('viewerVideo');
     const source = document.getElementById('videoSource');
     
-    // 暂停当前播放
     video.pause();
-    
-    // 设置新源
     source.src = videoUrl;
     video.load();
     
     viewer.classList.add('active');
     document.body.style.overflow = 'hidden';
     
-    // 自动播放
     video.play().catch(function(e) {
         console.log('Auto-play prevented:', e);
     });

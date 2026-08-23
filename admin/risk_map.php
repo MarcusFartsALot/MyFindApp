@@ -128,7 +128,7 @@ try {
         }
     );
     
-    // 地图使用过滤后的数据
+    // Map uses filtered data
     $reports = array_values($reportsForMap);
     
     // FR2.5: Region Filtering - filter by region name (map data only)
@@ -254,11 +254,114 @@ try {
     error_log('Load risk map error: ' . $e->getMessage());
 }
 
+/*
+|--------------------------------------------------------------------------
+| FR1.11: Risk Analysis Report Generation
+|--------------------------------------------------------------------------
+*/
+// ============================================================
+// Risk Analysis Data - For PDF Report
+// ============================================================
+
+// 1. Executive Summary Data
+$riskSummary = [
+    'total_reports' => $metrics['total_reports'],
+    'total_zones' => count($zones),
+    'has_critical_zones' => $metrics['red_zones'] > 0,
+    'critical_zone_count' => $metrics['red_zones'],
+    'orange_zone_count' => $metrics['orange_zones'],
+    'green_zone_count' => $metrics['green_zones'],
+    'status_message' => $metrics['red_zones'] > 0 
+        ? '⚠️ ' . $metrics['red_zones'] . ' Red Zone(s) detected - Immediate action required!' 
+        : ($metrics['orange_zones'] > 0 
+            ? '🟠 ' . $metrics['orange_zones'] . ' Orange Zone(s) detected - Enhanced monitoring recommended.' 
+            : '✅ No high-risk zones detected. Risk status is stable.'),
+    'overall_risk_level' => $metrics['red_zones'] > 0 ? 'High' : ($metrics['orange_zones'] > 0 ? 'Medium' : 'Low'),
+];
+
+// 2. High Risk Location Ranking (sorted by report count)
+$topRiskLocations = array_values(
+    array_slice(
+        array_filter($zones, function($zone) {
+            return $zone['risk'] === 'Red' || $zone['risk'] === 'Orange';
+        }),
+        0,
+        5
+    )
+);
+
+// 3. Category Analysis
+$categoryAnalysis = [];
+foreach ($validatedReports as $report) {
+    $cat = $report['category'] ?? 'Unknown';
+    if (!isset($categoryAnalysis[$cat])) {
+        $categoryAnalysis[$cat] = 0;
+    }
+    $categoryAnalysis[$cat]++;
+}
+arsort($categoryAnalysis);
+
+// 4. Trend Analysis - Daily Statistics
+$dateTrend = [];
+foreach ($validatedReports as $report) {
+    $date = date('Y-m-d', strtotime($report['created_at'] ?? 'now'));
+    if (!isset($dateTrend[$date])) {
+        $dateTrend[$date] = 0;
+    }
+    $dateTrend[$date]++;
+}
+// Sort by date
+ksort($dateTrend);
+// Get last 30 days only
+$dateTrend = array_slice($dateTrend, -30, 30, true);
+
+// 5. Recommendations
+$recommendations = [];
+if ($metrics['red_zones'] > 0) {
+    $recommendations[] = '🚨 Immediately address ' . $metrics['red_zones'] . ' Red Zone(s)';
+    $recommendations[] = '📋 Schedule an emergency security meeting to develop response plans';
+    foreach ($zones as $zone) {
+        if ($zone['risk'] === 'Red') {
+            $recommendations[] = '   - Priority Focus: ' . htmlspecialchars($zone['name']) . ' (' . $zone['count'] . ' reports)';
+        }
+    }
+}
+if ($metrics['orange_zones'] > 0) {
+    $recommendations[] = '🟠 Increase monitoring and patrol in ' . $metrics['orange_zones'] . ' Orange Zone(s)';
+}
+if ($metrics['green_zones'] > 0 && $metrics['red_zones'] == 0) {
+    $recommendations[] = '🟢 Maintain regular monitoring of Green Zones';
+}
+$recommendations[] = '📊 Conduct weekly risk map reviews to track trend changes';
+$recommendations[] = '📱 Ensure citizen reporting channels remain open and responsive';
+
+// 6. Risk Distribution (for report)
+$riskDistribution = [
+    'red' => [
+        'zones' => $metrics['red_zones'],
+        'reports' => $metrics['high_risk_reports'],
+        'percentage' => $metrics['red_percentage']
+    ],
+    'orange' => [
+        'zones' => $metrics['orange_zones'],
+        'reports' => $metrics['medium_risk_reports'],
+        'percentage' => $metrics['orange_percentage']
+    ],
+    'green' => [
+        'zones' => $metrics['green_zones'],
+        'reports' => $metrics['low_risk_reports'],
+        'percentage' => $metrics['green_percentage']
+    ]
+];
+
+// 7. Report Generation Timestamp
+$reportGeneratedAt = date('d M Y H:i:s');
+
 render_admin_start('View Risk Map', $admin, 'dashboard');
 
 ?>
 
-<!--  Chart.js -->
+<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
@@ -1121,10 +1224,14 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         </div>
 
 <!-- =========================================================
-     PDF CONTENT (Hidden)
+     PDF CONTENT - Full Risk Analysis Report (FR1.11)
 ========================================================= -->
 <div id="pdfContent" style="display:none;background:white;padding:30px;font-family:Arial,sans-serif;color:#1a1a2e;width:100%;max-width:800px;margin:0 auto;">
-    <h1 style="text-align:center;font-size:28px;color:#1a1a2e;margin-bottom:5px;">Risk Map Report</h1>
+
+    <!-- =========================================================
+         Report Title
+    ========================================================= -->
+    <h1 style="text-align:center;font-size:28px;color:#1a1a2e;margin-bottom:5px;">📊 Risk Analysis Report</h1>
     <p style="text-align:center;color:#6b7280;font-size:14px;margin-top:0;">
         Kuala Lumpur, Malaysia - <?= date('d M Y') ?>
     </p>
@@ -1132,53 +1239,202 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         ✅ Showing only Validated (approved) reports
     </p>
     <hr style="border:1px solid #e5e7eb;margin:15px 0;">
-    
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0;">
-        <div style="padding:15px;border:1px solid #e5e7eb;border-radius:8px;text-align:center;background:#f8fafc;">
-            <div style="font-size:28px;font-weight:700;color:#1a1a2e;"><?= $metrics['total_reports'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">Validated Reports</div>
-        </div>
+
+    <!-- =========================================================
+         1. Executive Summary
+    ========================================================= -->
+    <div style="margin:20px 0;padding:15px;background:#f8fafc;border-radius:8px;border-left:4px solid <?= $riskSummary['has_critical_zones'] ? '#dc3545' : '#28a745' ?>;">
+        <h3 style="margin:0 0 8px 0;font-size:15px;color:#1a1a2e;">📋 Executive Summary</h3>
+        <p style="margin:0 0 6px 0;font-size:13px;color:#4b5563;">
+            This report analyzes <strong><?= $riskSummary['total_reports'] ?></strong> validated reports
+            across <strong><?= $riskSummary['total_zones'] ?></strong> locations.
+            Overall risk level is <strong><?= $riskSummary['overall_risk_level'] ?></strong>.
+        </p>
+        <p style="margin:0;font-size:13px;font-weight:600;color:<?= $riskSummary['has_critical_zones'] ? '#dc3545' : ($riskSummary['orange_zone_count'] > 0 ? '#fd7e14' : '#28a745') ?>;">
+            <?= $riskSummary['status_message'] ?>
+        </p>
+    </div>
+
+    <!-- =========================================================
+         2. Risk Distribution Statistics
+    ========================================================= -->
+    <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📈 Risk Distribution Statistics</h3>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:10px 0 20px 0;">
         <div style="padding:15px;border:1px solid #dc3545;border-radius:8px;text-align:center;background:#fef2f2;">
-            <div style="font-size:28px;font-weight:700;color:#dc3545;"><?= $metrics['red_zones'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">Red Zones (<?= $metrics['red_percentage'] ?>%)</div>
+            <div style="font-size:28px;font-weight:700;color:#dc3545;"><?= $riskDistribution['red']['zones'] ?></div>
+            <div style="font-size:12px;color:#6b7280;">🔴 Red Zones</div>
+            <div style="font-size:11px;color:#dc3545;"><?= $riskDistribution['red']['percentage'] ?>%</div>
         </div>
         <div style="padding:15px;border:1px solid #fd7e14;border-radius:8px;text-align:center;background:#fff7ed;">
-            <div style="font-size:28px;font-weight:700;color:#fd7e14;"><?= $metrics['orange_zones'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">Orange Zones (<?= $metrics['orange_percentage'] ?>%)</div>
+            <div style="font-size:28px;font-weight:700;color:#fd7e14;"><?= $riskDistribution['orange']['zones'] ?></div>
+            <div style="font-size:12px;color:#6b7280;">🟠 Orange Zones</div>
+            <div style="font-size:11px;color:#fd7e14;"><?= $riskDistribution['orange']['percentage'] ?>%</div>
         </div>
         <div style="padding:15px;border:1px solid #28a745;border-radius:8px;text-align:center;background:#f0fdf4;">
-            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $metrics['green_zones'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">Green Zones (<?= $metrics['green_percentage'] ?>%)</div>
-        </div>
-        <div style="padding:15px;border:1px solid #dc3545;border-radius:8px;text-align:center;background:#fef2f2;">
-            <div style="font-size:28px;font-weight:700;color:#dc3545;"><?= $metrics['high_risk_reports'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">High Risk Reports</div>
-        </div>
-        <div style="padding:15px;border:1px solid #28a745;border-radius:8px;text-align:center;background:#f0fdf4;">
-            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $metrics['low_risk_reports'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">Low Risk Reports</div>
+            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $riskDistribution['green']['zones'] ?></div>
+            <div style="font-size:12px;color:#6b7280;">🟢 Green Zones</div>
+            <div style="font-size:11px;color:#28a745;"><?= $riskDistribution['green']['percentage'] ?>%</div>
         </div>
     </div>
-    
-    <hr style="border:1px solid #e5e7eb;margin:15px 0;">
-    
-    <h3 style="font-size:16px;color:#1a1a2e;margin-bottom:10px;">Validated Reports List</h3>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+
+    <!-- Risk Distribution Table -->
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
         <thead>
             <tr style="background:#f1f5f9;">
-                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Ticket ID</th>
-                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Location</th>
                 <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Risk Level</th>
-                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Category</th>
-                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Submitted</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Zones</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Reports</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="padding:6px;border:1px solid #e5e7eb;color:#dc3545;font-weight:600;">🔴 High Risk</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['red']['zones'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['red']['reports'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['red']['percentage'] ?>%</td>
+            </tr>
+            <tr>
+                <td style="padding:6px;border:1px solid #e5e7eb;color:#fd7e14;font-weight:600;">🟠 Medium Risk</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['orange']['zones'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['orange']['reports'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['orange']['percentage'] ?>%</td>
+            </tr>
+            <tr>
+                <td style="padding:6px;border:1px solid #e5e7eb;color:#28a745;font-weight:600;">🟢 Low Risk</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['zones'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['reports'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['percentage'] ?>%</td>
+            </tr>
+            <tr style="background:#f8fafc;font-weight:600;">
+                <td style="padding:6px;border:1px solid #e5e7eb;">Total</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskSummary['total_zones'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskSummary['total_reports'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;">100%</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- =========================================================
+         3. High Risk Location Ranking
+    ========================================================= -->
+    <?php if (!empty($topRiskLocations)): ?>
+    <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">🚨 High Risk Location Ranking</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
+        <thead>
+            <tr style="background:#f1f5f9;">
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Rank</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Location</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Reports</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:center;">Risk Level</th>
+                <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;">Primary Category</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php $rank = 1; ?>
+            <?php foreach ($topRiskLocations as $zone): ?>
+                <tr>
+                    <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;font-weight:600;">#<?= $rank++ ?></td>
+                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($zone['name']) ?></td>
+                    <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;font-weight:600;"><?= $zone['count'] ?></td>
+                    <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;font-weight:600;color:<?= $zone['risk'] === 'Red' ? '#dc3545' : '#fd7e14' ?>;">
+                        <?= $zone['risk'] ?>
+                    </td>
+                    <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($zone['category']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
+    <!-- =========================================================
+         4. Category Analysis
+    ========================================================= -->
+    <?php if (!empty($categoryAnalysis)): ?>
+    <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📂 Report Category Distribution</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:20px;">
+        <?php foreach ($categoryAnalysis as $category => $count): ?>
+            <div style="padding:8px 12px;background:#f8fafc;border-radius:6px;border:1px solid #e5e7eb;display:flex;justify-content:space-between;">
+                <span style="font-size:12px;color:#4b5563;"><?= htmlspecialchars($category) ?></span>
+                <span style="font-size:12px;font-weight:600;color:#1a1a2e;"><?= $count ?></span>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- =========================================================
+         5. Trend Analysis
+    ========================================================= -->
+    <?php if (!empty($dateTrend)): ?>
+    <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📉 Daily Report Trend (Last 30 Days)</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px;">
+        <thead>
+            <tr style="background:#f1f5f9;">
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:left;">Date</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:center;">Reports</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:center;">Trend Indicator</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php 
+            $trendValues = array_values($dateTrend);
+            $avgTrend = count($trendValues) > 0 ? array_sum($trendValues) / count($trendValues) : 0;
+            ?>
+            <?php foreach ($dateTrend as $date => $count): ?>
+                <tr>
+                    <td style="padding:4px 6px;border:1px solid #e5e7eb;"><?= date('d M Y', strtotime($date)) ?></td>
+                    <td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;font-weight:600;"><?= $count ?></td>
+                    <td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;">
+                        <?php if ($count > $avgTrend * 1.5): ?>
+                            <span style="color:#dc3545;">⬆️ Above Average</span>
+                        <?php elseif ($count < $avgTrend * 0.5): ?>
+                            <span style="color:#28a745;">⬇️ Below Average</span>
+                        <?php else: ?>
+                            <span style="color:#6b7280;">➖ Normal</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php endif; ?>
+
+    <!-- =========================================================
+         6. Recommendations
+    ========================================================= -->
+    <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">✅ Recommendations</h3>
+    <div style="margin-bottom:20px;padding:15px;background:#f0fdf4;border-radius:8px;border-left:4px solid #28a745;">
+        <ul style="margin:0;padding-left:20px;font-size:13px;color:#4b5563;">
+            <?php foreach ($recommendations as $recommendation): ?>
+                <li style="margin-bottom:6px;"><?= $recommendation ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+
+    <!-- =========================================================
+         7. Detailed Report List
+    ========================================================= -->
+    <hr style="border:1px solid #e5e7eb;margin:20px 0;">
+    <h3 style="font-size:16px;color:#1a1a2e;margin-bottom:10px;">📋 Detailed Report List</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead>
+            <tr style="background:#f1f5f9;">
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:left;">Ticket ID</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:left;">Location</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:center;">Risk Level</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:left;">Category</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:left;">Submitted</th>
             </tr>
         </thead>
         <tbody>
             <?php if (!empty($zones)): ?>
-                <?php foreach ($zones as $zone): ?>
-                    <?php $zoneRisk = $zone['risk']; ?>
-                    <?php foreach ($zone['reports'] as $report): ?>
-                        <?php
+                <?php 
+                $displayedIds = [];
+                foreach ($zones as $zone):
+                    foreach ($zone['reports'] as $report):
+                        $reportId = $report['id'] ?? '';
+                        if (in_array($reportId, $displayedIds)) continue;
+                        $displayedIds[] = $reportId;
                         $createdAt = $report['created_at'] ?? '';
                         $formattedDate = 'N/A';
                         if ($createdAt !== '') {
@@ -1188,36 +1444,45 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                                 $formattedDate = $createdAt;
                             }
                         }
-                        ?>
+                        $riskColor = match($zone['risk']) {
+                            'Red' => '#dc3545',
+                            'Orange' => '#fd7e14',
+                            default => '#28a745'
+                        };
+                ?>
                         <tr>
-                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></td>
-                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($zone['name'] ?? 'N/A') ?></td>
-                            <td style="padding:6px;border:1px solid #e5e7eb;font-weight:600;color:<?= $zoneRisk === 'Red' ? '#dc3545' : ($zoneRisk === 'Orange' ? '#fd7e14' : '#28a745') ?>;">
-                                <?= $zoneRisk ?>
+                            <td style="padding:4px 6px;border:1px solid #e5e7eb;font-weight:600;"><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></td>
+                            <td style="padding:4px 6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($zone['name'] ?? 'N/A') ?></td>
+                            <td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center;font-weight:600;color:<?= $riskColor ?>;">
+                                <?= $zone['risk'] ?>
                             </td>
-                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
-                            <td style="padding:6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($formattedDate) ?></td>
+                            <td style="padding:4px 6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
+                            <td style="padding:4px 6px;border:1px solid #e5e7eb;"><?= htmlspecialchars($formattedDate) ?></td>
                         </tr>
-                    <?php endforeach; ?>
-                <?php endforeach; ?>
+                <?php 
+                    endforeach;
+                endforeach; 
+                ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="5" style="padding:20px;text-align:center;color:#6b7280;">No validated reports</td>
+                    <td colspan="5" style="padding:20px;text-align:center;color:#6b7280;">No validated reports found</td>
                 </tr>
             <?php endif; ?>
         </tbody>
     </table>
-    
-    <p style="text-align:center;font-size:11px;color:#6b7280;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:15px;">
-        Generated on <?= date('d M Y H:i') ?> | Risk Map Dashboard
+
+    <!-- =========================================================
+         8. Footer
+    ========================================================= -->
+    <p style="text-align:center;font-size:10px;color:#6b7280;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:15px;">
+        Report Generated: <?= $reportGeneratedAt ?> | Risk Analysis Report | Kuala Lumpur Safety Monitoring System
     </p>
 </div>
 
 <!-- =========================================================
-     Leaflet.js
+     Google Maps API and Libraries
 ========================================================= -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAqSOx69G4xtBku2qB76XDHJB-W-LORJgc&callback=initMap" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -1247,41 +1512,66 @@ const riskColoursFill = {
     Green: '#28a745'
 };
 
-function initialiseRiskMap() {
-    if (!document.getElementById('riskMap')) return;
+// ============================================================
+// Google Maps 
+// ============================================================
 
-    const map = L.map('riskMap', {
-        center: KL_CENTER,
+let riskMap = null;
+
+function initMap() {
+    const mapContainer = document.getElementById('riskMap');
+    if (!mapContainer) return;
+
+    riskMap = new google.maps.Map(mapContainer, {
+        center: { lat: KL_CENTER[0], lng: KL_CENTER[1] },
         zoom: KL_ZOOM,
         minZoom: 12,
         maxZoom: 18,
-        maxBounds: [
-            [KL_BOUNDS.south - 0.02, KL_BOUNDS.west - 0.02],
-            [KL_BOUNDS.north + 0.02, KL_BOUNDS.east + 0.02]
-        ],
-        maxBoundsViscosity: 1.0
+        restriction: {
+            latLngBounds: {
+                north: KL_BOUNDS.north + 0.02,
+                south: KL_BOUNDS.south - 0.02,
+                east: KL_BOUNDS.east + 0.02,
+                west: KL_BOUNDS.west - 0.02
+            },
+            strictBounds: true
+        },
+        mapTypeId: 'roadmap',
+        styles: [
+            {
+                featureType: 'poi',
+                elementType: 'labels',
+                stylers: [{ visibility: 'off' }]
+            }
+        ]
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-    }).addTo(map);
+    // KL bounding box
+    const klBounds = new google.maps.Rectangle({
+        strokeColor: '#1a1a2e',
+        strokeOpacity: 0.3,
+        strokeWeight: 2,
+        fillColor: '#1a1a2e',
+        fillOpacity: 0.02,
+        map: riskMap,
+        bounds: {
+            north: KL_BOUNDS.north,
+            south: KL_BOUNDS.south,
+            east: KL_BOUNDS.east,
+            west: KL_BOUNDS.west
+        }
+    });
 
-    const klBounds = [
-        [KL_BOUNDS.south, KL_BOUNDS.west],
-        [KL_BOUNDS.north, KL_BOUNDS.east]
-    ];
-    
-    L.rectangle(klBounds, {
-        color: '#1a1a2e',
-        weight: 2,
-        opacity: 0.3,
-        fill: false,
-        dashArray: '5, 5'
-    }).addTo(map).bindPopup('📍 Kuala Lumpur');
+    // KL tags
+    const klLabel = new google.maps.InfoWindow({
+        content: '<div style="font-weight:600;color:#1a1a2e;">📍 Kuala Lumpur</div>',
+        position: { lat: KL_CENTER[0], lng: KL_CENTER[1] }
+    });
+    klLabel.open(riskMap);
 
+    // Draw risk zone circles.
     if (riskZones.length > 0) {
-        const bounds = [];
+        const bounds = new google.maps.LatLngBounds();
 
         riskZones.forEach(function(zone) {
             const colour = riskColours[zone.risk] || riskColours.Green;
@@ -1292,71 +1582,83 @@ function initialiseRiskMap() {
             else if (zone.risk === 'Orange') radius = 300;
             else radius = 150;
 
-            const circle = L.circle([zone.lat, zone.lng], {
-                radius: radius,
-                color: colour,
+            // draw circles
+            const circle = new google.maps.Circle({
+                strokeColor: colour,
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
                 fillColor: fillColour,
                 fillOpacity: 0.3,
-                weight: 2
-            }).addTo(map);
+                map: riskMap,
+                center: { lat: zone.lat, lng: zone.lng },
+                radius: radius,
+                clickable: true
+            });
 
-            L.marker([zone.lat, zone.lng], {
-                icon: L.divIcon({
-                    className: 'risk-marker',
-                    html: `<div style="width:20px;height:20px;border-radius:50%;background:${colour};border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:700;">${zone.count}</div>`,
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                })
-            }).addTo(map);
+            // Click the circle to display information.
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="font-family:Arial,sans-serif;padding:8px;">
+                        <strong>${zone.name}</strong><br>
+                        Risk Level: <span style="color:${colour};font-weight:600;">${zone.risk}</span><br>
+                        Reports: ${zone.count}<br>
+                        Category: ${zone.category}
+                    </div>
+                `
+            });
 
-            bounds.push([zone.lat, zone.lng]);
+            circle.addListener('click', function(event) {
+                infoWindow.setPosition(event.latLng);
+                infoWindow.open(riskMap);
+            });
+
+            // mark
+            const marker = new google.maps.Marker({
+                position: { lat: zone.lat, lng: zone.lng },
+                map: riskMap,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: colour,
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                    scale: 12,
+                    labelOrigin: new google.maps.Point(0, 4)
+                },
+                label: {
+                    text: zone.count.toString(),
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                }
+            });
+
+            marker.addListener('click', function() {
+                infoWindow.setPosition({ lat: zone.lat, lng: zone.lng });
+                infoWindow.open(riskMap);
+            });
+
+            bounds.extend({ lat: zone.lat, lng: zone.lng });
         });
 
-        if (bounds.length > 0) {
-            map.fitBounds(bounds, { padding: [50, 50] });
+        if (riskZones.length > 0) {
+            riskMap.fitBounds(bounds, { padding: 50 });
         }
     }
-
-    map.on('drag', function() {
-        const center = map.getCenter();
-        let newLat = center.lat;
-        let newLng = center.lng;
-        let clamped = false;
-        
-        if (center.lat < KL_BOUNDS.south) { newLat = KL_BOUNDS.south; clamped = true; }
-        if (center.lat > KL_BOUNDS.north) { newLat = KL_BOUNDS.north; clamped = true; }
-        if (center.lng < KL_BOUNDS.west) { newLng = KL_BOUNDS.west; clamped = true; }
-        if (center.lng > KL_BOUNDS.east) { newLng = KL_BOUNDS.east; clamped = true; }
-        
-        if (clamped) {
-            map.panTo([newLat, newLng], { animate: true });
-        }
-    });
-
-    window.addEventListener('resize', function() {
-        setTimeout(function() { map.invalidateSize(); }, 200);
-    });
 }
 
-function escapeHtml(value) {
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof L !== 'undefined') {
-        initialiseRiskMap();
-    } else {
-        setTimeout(initialiseRiskMap, 1000);
+// Refresh the map when the window size changes.
+window.addEventListener('resize', function() {
+    if (riskMap) {
+        setTimeout(function() {
+            google.maps.event.trigger(riskMap, 'resize');
+        }, 200);
     }
-    
-    initChart();
 });
 
+// ============================================================
+// Chart.js 
+// ============================================================
 function initChart() {
     const ctx = document.getElementById('riskChart');
     if (!ctx) return;
@@ -1389,8 +1691,34 @@ function initChart() {
     });
 }
 
+// ============================================================
+// DOMContentLoaded event
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    initChart();
+});
+
+// ============================================================
+// PDF Export function
+// ============================================================
 function exportPDF() {
     const element = document.getElementById('pdfContent');
+    if (!element) {
+        alert('PDF content not found. Please refresh and try again.');
+        return;
+    }
+    
+    const hasData = <?= !empty($zones) ? 'true' : 'false' ?>;
+    if (!hasData) {
+        alert('No data available to export. Please ensure there are validated reports.');
+        return;
+    }
+    
+    const button = document.querySelector('.btn-filter-pdf');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="bx bx-loader bx-spin"></i> Generating...';
+    button.disabled = true;
+    
     element.style.display = 'block';
     element.style.background = 'white';
     element.style.padding = '20px';
@@ -1426,7 +1754,7 @@ function exportPDF() {
         const imgY = (pdfHeight - imgHeight * ratio) / 2;
         
         pdf.addImage(imgData, 'JPEG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-        pdf.save('Risk_Map_Report_' + new Date().toISOString().slice(0,10) + '.pdf');
+        pdf.save('Risk_Analysis_Report_' + new Date().toISOString().slice(0,10) + '.pdf');
         
         element.style.display = 'none';
         element.style.position = '';
@@ -1435,6 +1763,9 @@ function exportPDF() {
         element.style.maxWidth = '';
         element.style.top = '';
         element.style.left = '';
+        
+        button.innerHTML = originalText;
+        button.disabled = false;
     }).catch(function(error) {
         console.error('PDF generation error:', error);
         element.style.display = 'none';
@@ -1444,6 +1775,9 @@ function exportPDF() {
         element.style.maxWidth = '';
         element.style.top = '';
         element.style.left = '';
+        
+        button.innerHTML = originalText;
+        button.disabled = false;
         alert('Error generating PDF. Please try again.');
     });
 }

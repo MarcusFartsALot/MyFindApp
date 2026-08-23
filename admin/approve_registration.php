@@ -21,6 +21,13 @@ $offset = ($page - 1) * $perPage;
 $statusFilter = $_GET['status'] ?? 'all';
 $typeFilter = $_GET['type'] ?? 'all';
 
+// ============================================================
+// FR2.4: Advanced Filtering & Search - Filter Parameters
+// ============================================================
+$dateFrom = $_GET['date_from'] ?? '';
+$dateTo = $_GET['date_to'] ?? '';
+$searchQuery = trim($_GET['search'] ?? '');
+
 /*
 |--------------------------------------------------------------------------
 | Call Supabase REST API directly
@@ -82,7 +89,6 @@ function getFullStorageUrl($path) {
     if (empty($path)) return null;
     if (filter_var($path, FILTER_VALIDATE_URL)) return $path;
     
-    // ✅ 固定使用 registration-documents bucket
     return rtrim($SUPABASE_URL, '/') . '/storage/v1/object/public/registration-documents/' . ltrim($path, '/');
 }
 
@@ -130,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? ucfirst($type) . ' has been approved successfully.'
                 : ucfirst($type) . ' has been rejected successfully.';
 
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&type=' . $typeFilter . '&page=' . $page);
+            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&type=' . $typeFilter . '&date_from=' . $dateFrom . '&date_to=' . $dateTo . '&search=' . urlencode($searchQuery) . '&page=' . $page);
             exit;
         } catch (Throwable $e) {
             $actionError = 'Unable to update. Please try again later.';
@@ -141,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
-| Load Tourists and Citizens with Stats
+| Load Tourists and Citizens with Stats & Filters (FR2.4)
 |--------------------------------------------------------------------------
 */
 $items = [];
@@ -161,8 +167,7 @@ try {
         foreach ($tourists as $t) {
             $t['_type'] = 'tourist';
             $t['_display_name'] = 'Tourist';
-            $t['_icon'] = '🛂';
-            // ✅ 从 tourists bucket 读取照片
+            $t['_icon'] = '';
             $t['_photo_front'] = getFullStorageUrl($t['passport_front_url'] ?? null, 'tourist');
             $t['_photo_back'] = getFullStorageUrl($t['passport_back_url'] ?? null, 'tourist');
             $allItems[] = $t;
@@ -175,22 +180,51 @@ try {
         foreach ($citizens as $c) {
             $c['_type'] = 'citizen';
             $c['_display_name'] = 'Citizen';
-            $c['_icon'] = '🪪';
-            // ✅ 从 citizens bucket 读取照片
+            $c['_icon'] = '';
             $c['_photo_front'] = getFullStorageUrl($c['ic_front_url'] ?? null, 'citizen');
             $c['_photo_back'] = getFullStorageUrl($c['ic_back_url'] ?? null, 'citizen');
             $allItems[] = $c;
         }
     }
     
-    // 3. Filter by type
+    // 3. FR2.4: Date Range Filter
+    if ($dateFrom !== '') {
+        $allItems = array_filter($allItems, function($item) use ($dateFrom) {
+            $createdAt = $item['created_at'] ?? '';
+            if ($createdAt === '') return true;
+            return strtotime($createdAt) >= strtotime($dateFrom . ' 00:00:00');
+        });
+    }
+    if ($dateTo !== '') {
+        $allItems = array_filter($allItems, function($item) use ($dateTo) {
+            $createdAt = $item['created_at'] ?? '';
+            if ($createdAt === '') return true;
+            return strtotime($createdAt) <= strtotime($dateTo . ' 23:59:59');
+        });
+    }
+    
+    // 4. FR2.4: Keyword Search (Profile ID, Passport only)
+    if ($searchQuery !== '') {
+        $searchLower = strtolower($searchQuery);
+        $allItems = array_filter($allItems, function($item) use ($searchLower) {
+            $profileId = strtolower($item['profile_id'] ?? '');
+            $passport = strtolower($item['passport_number'] ?? '');
+            $ic = strtolower($item['ic_number'] ?? '');
+            
+            return strpos($profileId, $searchLower) !== false ||
+                   strpos($passport, $searchLower) !== false ||
+                   strpos($ic, $searchLower) !== false;
+        });
+    }
+    
+    // 5. Filter by type
     if ($typeFilter === 'tourist') {
         $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'tourist');
     } elseif ($typeFilter === 'citizen') {
         $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'citizen');
     }
     
-    // 4. Filter by status
+    // 6. Filter by status
     if ($statusFilter !== 'all') {
         $allItems = array_filter($allItems, function($item) use ($statusFilter) {
             $status = strtolower($item['verification_status'] ?? '');
@@ -198,14 +232,14 @@ try {
         });
     }
     
-    // 5. Sort by created_at desc
+    // 7. Sort by created_at desc
     usort($allItems, function($a, $b) {
         $timeA = strtotime($a['created_at'] ?? $a['verified_at'] ?? 'now');
         $timeB = strtotime($b['created_at'] ?? $b['verified_at'] ?? 'now');
         return $timeB - $timeA;
     });
     
-    // 6. Count stats
+    // 8. Count stats
     $totalItems = count($allItems);
     foreach ($allItems as $item) {
         $status = strtolower($item['verification_status'] ?? '');
@@ -217,7 +251,7 @@ try {
         else $citizenCount++;
     }
     
-    // 7. Paginate
+    // 9. Paginate
     $items = array_slice($allItems, $offset, $perPage);
     
 } catch (Throwable $e) {
@@ -356,19 +390,25 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 .stat-citizen .stat-number { color: #8b5cf6; }
 
 /* =========================================================
-   FILTER BAR
+   FILTER BAR - Enhanced (FR2.4)
 ========================================================= */
 .filter-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 18px;
+    background: white;
+    border-radius: 14px;
+    border: 1px solid #f1f3f5;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.filter-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-    padding: 14px 18px;
-    background: white;
-    border-radius: 14px;
-    border: 1px solid #f1f3f5;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .filter-group {
@@ -436,6 +476,128 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     color: #e5e7eb;
     font-size: 20px;
     padding: 0 4px;
+}
+
+.filter-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.filter-input {
+    padding: 6px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 12px;
+    background: white;
+    transition: border-color 0.2s;
+    color: #1a1a2e;
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: #1a1a2e;
+    box-shadow: 0 0 0 3px rgba(26,26,46,0.08);
+}
+
+.filter-input-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: white;
+    min-width: 100px;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.btn-filter {
+    padding: 6px 16px;
+    font-size: 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-filter-primary {
+    background: #1a1a2e;
+    color: white;
+}
+
+.btn-filter-primary:hover {
+    background: #2d2d4e;
+}
+
+.btn-filter-outline {
+    background: white;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+
+.btn-filter-outline:hover {
+    background: #f3f4f6;
+}
+
+.btn-filter-reset {
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+
+.btn-filter-reset:hover {
+    background: #e5e7eb;
+}
+
+/* FR2.4: Active Filters Display */
+.active-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 4px 0;
+}
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #4b5563;
+}
+
+.filter-badge .remove {
+    cursor: pointer;
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+.filter-badge .remove:hover {
+    color: #dc3545;
+}
+
+.filter-badge-date {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.filter-badge-search {
+    background: #fef3c7;
+    color: #92400e;
 }
 
 /* =========================================================
@@ -948,10 +1110,9 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
         padding: 10px 12px;
     }
     
-    .filter-bar {
+    .filter-row {
         flex-direction: column;
         align-items: stretch;
-        gap: 10px;
     }
     
     .filter-group {
@@ -1002,6 +1163,11 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
         padding: 8px 10px;
         font-size: 11px;
     }
+    
+    .filter-input-sm {
+        min-width: 80px;
+        width: 100%;
+    }
 }
 </style>
 
@@ -1045,53 +1211,125 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     <!-- STATS CARDS -->
     <section class="stats-grid">
         <div class="stat-card stat-total">
-            <span class="stat-icon">📊</span>
             <span class="stat-number"><?= $totalItems ?></span>
             <span class="stat-label">Total Registrations</span>
         </div>
         <div class="stat-card stat-pending">
-            <span class="stat-icon">⏳</span>
             <span class="stat-number"><?= $pendingCount ?></span>
             <span class="stat-label">Pending Review</span>
         </div>
         <div class="stat-card stat-approved">
-            <span class="stat-icon">✅</span>
             <span class="stat-number"><?= $approvedCount ?></span>
             <span class="stat-label">Approved</span>
         </div>
         <div class="stat-card stat-rejected">
-            <span class="stat-icon">❌</span>
             <span class="stat-number"><?= $rejectedCount ?></span>
             <span class="stat-label">Rejected</span>
         </div>
         <div class="stat-card stat-tourist">
-            <span class="stat-icon">🛂</span>
             <span class="stat-number"><?= $touristCount ?></span>
             <span class="stat-label">Tourists</span>
         </div>
         <div class="stat-card stat-citizen">
-            <span class="stat-icon">🪪</span>
             <span class="stat-number"><?= $citizenCount ?></span>
             <span class="stat-label">Citizens</span>
         </div>
     </section>
 
-    <!-- FILTER BAR -->
+    <!-- ============================================================
+         FILTER BAR - Enhanced (FR2.4)
+    ============================================================ -->
     <div class="filter-bar">
-        <div class="filter-group">
-            <!-- Type Filter -->
-            <a href="?type=all&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'all' ? 'active' : '' ?>">All</a>
-            <a href="?type=tourist&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'tourist' ? 'active-tourist' : '' ?>">🛂 Tourist</a>
-            <a href="?type=citizen&status=<?= $statusFilter ?>&page=1" class="filter-btn <?= $typeFilter === 'citizen' ? 'active-citizen' : '' ?>">🪪 Citizen</a>
+        <!-- Row 1: Type & Status Filters -->
+        <div class="filter-row">
+            <div class="filter-group">
+                <span class="filter-label">Type:</span>
+                <a href="?type=all&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'all' ? 'active' : '' ?>">All</a>
+                <a href="?type=tourist&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'tourist' ? 'active-tourist' : '' ?>">Tourist</a>
+                <a href="?type=citizen&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'citizen' ? 'active-citizen' : '' ?>">Citizen</a>
+            </div>
             
-            <span class="filter-divider">|</span>
-            
-            <!-- Status Filter -->
-            <a href="?type=<?= $typeFilter ?>&status=all&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All Status</a>
-            <a href="?type=<?= $typeFilter ?>&status=pending&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">⏳ Pending</a>
-            <a href="?type=<?= $typeFilter ?>&status=approved&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">✅ Approved</a>
-            <a href="?type=<?= $typeFilter ?>&status=rejected&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">❌ Rejected</a>
+            <div class="filter-group">
+                <span class="filter-label">Status:</span>
+                <a href="?type=<?= $typeFilter ?>&status=all&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
+                <a href="?type=<?= $typeFilter ?>&status=pending&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">Pending</a>
+                <a href="?type=<?= $typeFilter ?>&status=approved&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">Approved</a>
+                <a href="?type=<?= $typeFilter ?>&status=rejected&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">Rejected</a>
+            </div>
         </div>
+
+        <!-- Row 2: FR2.4 Advanced Filters -->
+        <div class="filter-row">
+            <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;" id="filterForm">
+                <!-- Hidden fields to preserve filters -->
+                <input type="hidden" name="status" value="<?= $statusFilter ?>">
+                <input type="hidden" name="type" value="<?= $typeFilter ?>">
+
+                <!-- FR2.4: Date Range Filter -->
+                <div class="filter-group">
+                    <span class="filter-label">Date:</span>
+                    <input type="date" name="date_from" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateFrom) ?>" placeholder="From">
+                    <span style="font-size:12px;color:#6b7280;">→</span>
+                    <input type="date" name="date_to" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateTo) ?>" placeholder="To">
+                </div>
+
+                <!-- FR2.4: Keyword Search (Profile ID, Passport, IC) -->
+                <div class="filter-group">
+                    <span class="filter-label">Search:</span>
+                    <input type="text" name="search" class="filter-input filter-input-sm" placeholder="Profile ID, Passport, IC..." value="<?= htmlspecialchars($searchQuery) ?>" style="min-width:160px;">
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="filter-actions">
+                    <button type="submit" class="btn-filter btn-filter-primary">
+                        <i class='bx bx-filter'></i> Apply
+                    </button>
+                    <a href="approve_registration.php" class="btn-filter btn-filter-reset">
+                        <i class='bx bx-reset'></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- FR2.4: Active Filters Display -->
+        <?php if ($statusFilter !== 'all' || $typeFilter !== 'all' || $dateFrom !== '' || $dateTo !== '' || $searchQuery !== ''): ?>
+            <div class="active-filters">
+                <span style="font-size:11px;color:#6b7280;font-weight:500;">Active Filters:</span>
+                <?php if ($statusFilter !== 'all'): ?>
+                    <span class="filter-badge">
+                        Status: <?= ucfirst($statusFilter) ?>
+                        <span class="remove" onclick="removeFilter('status')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($typeFilter !== 'all'): ?>
+                    <span class="filter-badge">
+                        Type: <?= ucfirst($typeFilter) ?>
+                        <span class="remove" onclick="removeFilter('type')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($dateFrom !== ''): ?>
+                    <span class="filter-badge filter-badge-date">
+                        From: <?= htmlspecialchars($dateFrom) ?>
+                        <span class="remove" onclick="removeFilter('date_from')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($dateTo !== ''): ?>
+                    <span class="filter-badge filter-badge-date">
+                        To: <?= htmlspecialchars($dateTo) ?>
+                        <span class="remove" onclick="removeFilter('date_to')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <?php if ($searchQuery !== ''): ?>
+                    <span class="filter-badge filter-badge-search">
+                        Search: "<?= htmlspecialchars($searchQuery) ?>"
+                        <span class="remove" onclick="removeFilter('search')">&times;</span>
+                    </span>
+                <?php endif; ?>
+                <a href="approve_registration.php" style="font-size:11px;color:#dc3545;text-decoration:none;font-weight:500;">
+                    <i class='bx bx-x'></i> Clear All
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 
     <!-- TABLE -->
@@ -1114,7 +1352,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         <?php
                         $profileId = (string)($item['profile_id'] ?? '');
                         $type = $item['_type'] ?? 'tourist';
-                        $typeIcon = $item['_icon'] ?? '🛂';
+                        $typeIcon = $item['_icon'] ?? '';
                         $displayName = $item['_display_name'] ?? 'Tourist';
                         
                         $idNumber = $type === 'tourist' 
@@ -1148,7 +1386,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         <tr>
                             <td>
                                 <span class="type-badge <?= $type === 'tourist' ? 'type-tourist' : 'type-citizen' ?>">
-                                    <?= $typeIcon ?> <?= $displayName ?>
+                                    <?= $displayName ?>
                                 </span>
                             </td>
                             <td class="tourist-id"><?= htmlspecialchars(substr($profileId, 0, 8) . '...', ENT_QUOTES, 'UTF-8') ?></td>
@@ -1180,7 +1418,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                             <div class="empty-state">
                                 <i class='bx bx-check-circle'></i>
                                 <h3>No Registrations Found</h3>
-                                <p>No registrations found matching your criteria.</p>
+                                <p>No registrations found matching your criteria. Try adjusting your filters.</p>
                             </div>
                         </td>
                     </tr>
@@ -1196,7 +1434,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                 </div>
                 <div class="pagination-links">
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>">&larr;</a>
+                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&larr;</a>
                     <?php else: ?>
                         <span class="disabled">&larr;</span>
                     <?php endif; ?>
@@ -1205,14 +1443,14 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         <?php if ($i === $page): ?>
                             <span class="active"><?= $i ?></span>
                         <?php elseif ($i === 1 || $i === $totalPages || abs($i - $page) <= 1): ?>
-                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>"><?= $i ?></a>
+                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>"><?= $i ?></a>
                         <?php elseif ($i === $page - 2 || $i === $page + 2): ?>
                             <span>...</span>
                         <?php endif; ?>
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>">&rarr;</a>
+                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&rarr;</a>
                     <?php else: ?>
                         <span class="disabled">&rarr;</span>
                     <?php endif; ?>
@@ -1259,6 +1497,16 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 <script>
 // Items data for drawer
 const itemsData = <?= json_encode($items) ?>;
+
+// ============================================================
+// FR2.4: Remove filter function
+// ============================================================
+function removeFilter(filterName) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(filterName);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+}
 
 function openImagePreview(url) {
     const viewer = document.getElementById('imageViewer');
@@ -1307,7 +1555,7 @@ function openDrawer(profileId, type) {
     };
     const statusDisplay = statusDisplayMap[statusLower] || item.verification_status || 'Pending Review';
 
-    const typeIcon = item._icon || '🛂';
+    const typeIcon = item._icon || '';
     const displayName = item._display_name || 'Tourist';
     
     const photoFront = item._photo_front || null;
@@ -1338,7 +1586,7 @@ function openDrawer(profileId, type) {
             <span class="detail-label">Type</span>
             <div class="detail-value">
                 <span class="type-badge ${type === 'tourist' ? 'type-tourist' : 'type-citizen'}">
-                    ${typeIcon} ${displayName}
+                    ${displayName}
                 </span>
             </div>
         </div>
