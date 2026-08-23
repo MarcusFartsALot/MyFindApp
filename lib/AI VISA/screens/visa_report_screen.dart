@@ -35,6 +35,7 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
             employment_information(*),
             financial_information(*),
             travel_information(*),
+            supporting_documents(*), 
             payment_transactions(*)
           ''')
           .eq('id', widget.applicationId)
@@ -63,6 +64,18 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
     return null;
   }
 
+  /// FORMATTER: Scans for numbers like "1)" or "2." and injects clean double line breaks before them.
+  String _formatAiReasoning(String? rawReason) {
+    if (rawReason == null || rawReason.trim().isEmpty) return 'N/A';
+
+    String formatted = rawReason.replaceAllMapped(
+        RegExp(r'\s+(\d+[\)\.])\s*'),
+            (Match m) => '\n\n${m[1]} '
+    );
+
+    return formatted.trim();
+  }
+
   Future<void> _downloadFullPdfReport() async {
     if (_applicationData == null) return;
 
@@ -77,13 +90,16 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
       final travel = _extractMap(app['travel_information']);
       final prediction = _extractMap(app['risk_predictions']);
       final payment = _extractMap(app['payment_transactions']);
+      final documents = _extractMap(app['supporting_documents']);
 
       final double riskScore = double.tryParse(prediction?['risk_score']?.toString() ?? '0') ?? 0.0;
       final double successRate = 100.0 - riskScore;
 
+      // Apply the precise formatter
+      final formattedReason = _formatAiReasoning(prediction?['prediction_reason']);
+
       final pdf = pw.Document();
 
-      // Using MultiPage because the comprehensive form data will likely exceed one page
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -114,20 +130,29 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
               pw.Text("Transaction ID: ${payment?['stripe_transaction_id'] ?? 'N/A'}"),
               pw.SizedBox(height: 24),
 
-              // 1. AI Assessment Result (Prioritized at the top)
+              // 1. AI Assessment Result
               _buildPdfSectionTitle("1. AI RISK ASSESSMENT RESULT"),
               pw.Container(
-                padding: const pw.EdgeInsets.all(12),
-                decoration: pw.BoxDecoration(color: PdfColors.grey100, border: pw.Border.all(color: PdfColors.grey400)),
+                padding: const pw.EdgeInsets.all(16),
+                decoration: pw.BoxDecoration(
+                    color: PdfColors.grey50,
+                    border: pw.Border.all(color: PdfColors.grey400),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8))
+                ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text("Visa Success Probability: ${successRate.toStringAsFixed(1)}%", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
                     pw.Text("Risk Level: ${prediction?['risk_level'] ?? 'N/A'}"),
                     pw.Text("System Recommendation: ${prediction?['recommendation'] ?? 'N/A'}"),
+                    pw.SizedBox(height: 12),
+                    pw.Text("Assessment Reasoning:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
-                    pw.Text("Assessment Reasoning:"),
-                    pw.Text(prediction?['prediction_reason'] ?? 'N/A', style: const pw.TextStyle(color: PdfColors.grey700)),
+                    pw.Text(
+                      formattedReason,
+                      style: const pw.TextStyle(color: PdfColors.grey800, lineSpacing: 1.5),
+                      textAlign: pw.TextAlign.left,
+                    ),
                   ],
                 ),
               ),
@@ -165,6 +190,13 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
               _buildPdfRow("Intended Destination:", travel?['intended_destination']),
               _buildPdfRow("Arrival Date:", travel?['arrival_date']),
               _buildPdfRow("Accommodation / Hotel:", travel?['hotel_name']),
+              pw.SizedBox(height: 16),
+
+              // 6. Supporting Documents
+              _buildPdfSectionTitle("6. SUPPORTING DOCUMENTS"),
+              _buildPdfRow("Document Attached:", documents != null && documents['file_url'] != null ? 'Yes (Uploaded)' : 'No Document Provided'),
+              if (documents != null && documents['document_type'] != null)
+                _buildPdfRow("Document Type:", documents['document_type']),
             ];
           },
         ),
@@ -241,6 +273,9 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
     final Color statusColor = isApproved ? const Color(0xFF15803D) : (isReview ? const Color(0xFFD97706) : const Color(0xFFDC2626));
     final IconData statusIcon = isApproved ? Icons.verified : (isReview ? Icons.warning_rounded : Icons.cancel);
 
+    // Apply the formatter to the UI Reasoning block
+    final formattedReasonUI = _formatAiReasoning(prediction?['prediction_reason']);
+
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -291,8 +326,8 @@ class _VisaReportScreenState extends State<VisaReportScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  prediction?['prediction_reason'] ?? 'No specific reasoning provided by the AI engine.',
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.5),
+                  formattedReasonUI,
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.6),
                 ),
               ],
             ),

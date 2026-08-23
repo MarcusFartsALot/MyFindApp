@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // NEW: Required for local caching
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/ai_service.dart';
 import '../services/database_service.dart';
@@ -15,7 +16,7 @@ class VisaApplicationScreen extends StatefulWidget {
   State<VisaApplicationScreen> createState() => _VisaApplicationScreenState();
 }
 
-class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
+class _VisaApplicationScreenState extends State<VisaApplicationScreen> with WidgetsBindingObserver {
   int _currentStep = 0;
   AppProcessState _processState = AppProcessState.fillingForm;
   double _successRate = 0.0;
@@ -118,10 +119,26 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadPreFilledData();
   }
 
-  /// Automatically fetches previously saved local drafts, then overrides identity details with database values.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive || state == AppLifecycleState.detached) {
+      _saveDraftDataToCache();
+    }
+  }
+
+  Map<String, dynamic>? _extractMap(dynamic source) {
+    if (source is List && source.isNotEmpty) {
+      return Map<String, dynamic>.from(source.first as Map);
+    } else if (source is Map) {
+      return Map<String, dynamic>.from(source);
+    }
+    return null;
+  }
+
   Future<void> _loadPreFilledData() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -130,56 +147,62 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         return;
       }
 
-      // --- 1. LOAD LOCAL CACHE DRAFTS FIRST ---
+      // --- 1. LOAD LOCAL CACHE DRAFTS FIRST (JSON) ---
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = 'visa_draft_${user.id}';
+      final draftString = prefs.getString(cacheKey);
 
-      _dobCtrl.text = prefs.getString('${cacheKey}_dob') ?? '';
-      _occupCtrl.text = prefs.getString('${cacheKey}_occup') ?? '';
-      _emergNameCtrl.text = prefs.getString('${cacheKey}_emergName') ?? '';
-      _emergPhoneCtrl.text = prefs.getString('${cacheKey}_emergPhone') ?? '';
-      _emergRelCtrl.text = prefs.getString('${cacheKey}_emergRel') ?? '';
-      _compNameCtrl.text = prefs.getString('${cacheKey}_compName') ?? '';
-      _compAddrCtrl.text = prefs.getString('${cacheKey}_compAddr') ?? '';
-      _compPhoneCtrl.text = prefs.getString('${cacheKey}_compPhone') ?? '';
-      _jobTitleCtrl.text = prefs.getString('${cacheKey}_jobTitle') ?? '';
-      _yearsEmpCtrl.text = prefs.getString('${cacheKey}_yearsEmp') ?? '';
-      _monthlyIncCtrl.text = prefs.getString('${cacheKey}_monthlyInc') ?? '';
-      _annualIncCtrl.text = prefs.getString('${cacheKey}_annualInc') ?? '';
-      _bankNameCtrl.text = prefs.getString('${cacheKey}_bankName') ?? '';
-      _accBalCtrl.text = prefs.getString('${cacheKey}_accBal') ?? '';
-      _mthlyExpCtrl.text = prefs.getString('${cacheKey}_mthlyExp') ?? '';
-      _purposeCtrl.text = prefs.getString('${cacheKey}_purpose') ?? '';
-      _arrDateCtrl.text = prefs.getString('${cacheKey}_arrDate') ?? '';
-      _depDateCtrl.text = prefs.getString('${cacheKey}_depDate') ?? '';
-      _visaExpCtrl.text = prefs.getString('${cacheKey}_visaExp') ?? '';
-      _hotelNameCtrl.text = prefs.getString('${cacheKey}_hotelName') ?? '';
-      _hotelAddrCtrl.text = prefs.getString('${cacheKey}_hotelAddr') ?? '';
-      _airlineCtrl.text = prefs.getString('${cacheKey}_airline') ?? '';
-      _flightNoCtrl.text = prefs.getString('${cacheKey}_flightNo') ?? '';
+      if (draftString != null) {
+        try {
+          final Map<String, dynamic> draftData = jsonDecode(draftString);
+          _dobCtrl.text = draftData['dob'] ?? '';
+          _occupCtrl.text = draftData['occup'] ?? '';
+          _emergNameCtrl.text = draftData['emergName'] ?? '';
+          _emergPhoneCtrl.text = draftData['emergPhone'] ?? '';
+          _emergRelCtrl.text = draftData['emergRel'] ?? '';
+          _compNameCtrl.text = draftData['compName'] ?? '';
+          _compAddrCtrl.text = draftData['compAddr'] ?? '';
+          _compPhoneCtrl.text = draftData['compPhone'] ?? '';
+          _jobTitleCtrl.text = draftData['jobTitle'] ?? '';
+          _yearsEmpCtrl.text = draftData['yearsEmp'] ?? '';
+          _monthlyIncCtrl.text = draftData['monthlyInc'] ?? '';
+          _annualIncCtrl.text = draftData['annualInc'] ?? '';
+          _bankNameCtrl.text = draftData['bankName'] ?? '';
+          _accBalCtrl.text = draftData['accBal'] ?? '';
+          _mthlyExpCtrl.text = draftData['mthlyExp'] ?? '';
+          _purposeCtrl.text = draftData['purpose'] ?? '';
+          _arrDateCtrl.text = draftData['arrDate'] ?? '';
+          _depDateCtrl.text = draftData['depDate'] ?? '';
+          _visaExpCtrl.text = draftData['visaExp'] ?? '';
+          _hotelNameCtrl.text = draftData['hotelName'] ?? '';
+          _hotelAddrCtrl.text = draftData['hotelAddr'] ?? '';
+          _airlineCtrl.text = draftData['airline'] ?? '';
+          _flightNoCtrl.text = draftData['flightNo'] ?? '';
 
-      final cachedGender = prefs.getString('${cacheKey}_gender');
-      if (cachedGender != null && ['Male', 'Female', 'Other'].contains(cachedGender)) _selectedGender = cachedGender;
+          final cachedGender = draftData['gender'];
+          if (cachedGender != null && ['Male', 'Female', 'Other'].contains(cachedGender)) _selectedGender = cachedGender;
 
-      final cachedMarital = prefs.getString('${cacheKey}_marital');
-      if (cachedMarital != null && ['Single', 'Couple', 'Married'].contains(cachedMarital)) _selectedMaritalStatus = cachedMarital;
+          final cachedMarital = draftData['marital'];
+          if (cachedMarital != null && ['Single', 'Couple', 'Married'].contains(cachedMarital)) _selectedMaritalStatus = cachedMarital;
 
-      final cachedEdu = prefs.getString('${cacheKey}_edu');
-      if (cachedEdu != null && _educationLevels.contains(cachedEdu)) _selectedEduLevel = cachedEdu;
+          final cachedEdu = draftData['edu'];
+          if (cachedEdu != null && _educationLevels.contains(cachedEdu)) _selectedEduLevel = cachedEdu;
 
-      final cachedEmpStat = prefs.getString('${cacheKey}_empStatus');
-      if (cachedEmpStat != null && _employmentStatuses.contains(cachedEmpStat)) _selectedEmpStatus = cachedEmpStat;
+          final cachedEmpStat = draftData['empStatus'];
+          if (cachedEmpStat != null && _employmentStatuses.contains(cachedEmpStat)) _selectedEmpStatus = cachedEmpStat;
 
-      final cachedState = prefs.getString('${cacheKey}_state');
-      if (cachedState != null && _malaysiaStates.contains(cachedState)) _selectedState = cachedState;
+          final cachedState = draftData['state'];
+          if (cachedState != null && _malaysiaStates.contains(cachedState)) _selectedState = cachedState;
 
-      final cachedKlZone = prefs.getString('${cacheKey}_klZone');
-      if (cachedKlZone != null && _klZones.contains(cachedKlZone)) _selectedKlZone = cachedKlZone;
+          final cachedKlZone = draftData['klZone'];
+          if (cachedKlZone != null && _klZones.contains(cachedKlZone)) _selectedKlZone = cachedKlZone;
 
-      final cachedAccom = prefs.getString('${cacheKey}_accomType');
-      if (cachedAccom != null && _accomTypes.contains(cachedAccom)) _selectedAccomType = cachedAccom;
-      // -----------------------------------------
-
+          final cachedAccom = draftData['accomType'];
+          if (cachedAccom != null && _accomTypes.contains(cachedAccom)) _selectedAccomType = cachedAccom;
+        } catch (e) {
+          debugPrint("Failed to parse cache: $e");
+        }
+      }
 
       // --- 2. FETCH AND OVERWRITE IDENTITY DATA FROM DB ---
       final profileData = await _supabase
@@ -189,10 +212,10 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
           .maybeSingle();
 
       if (profileData != null) {
-        _nameCtrl.text = profileData['full_name'] ?? '';
-        _emailCtrl.text = profileData['email'] ?? '';
-        _phoneCtrl.text = profileData['phone_number'] ?? '';
-        _nationalityCtrl.text = profileData['nationality'] ?? '';
+        if (_nameCtrl.text.isEmpty) _nameCtrl.text = profileData['full_name'] ?? '';
+        if (_emailCtrl.text.isEmpty) _emailCtrl.text = profileData['email'] ?? '';
+        if (_phoneCtrl.text.isEmpty) _phoneCtrl.text = profileData['phone_number'] ?? '';
+        if (_nationalityCtrl.text.isEmpty) _nationalityCtrl.text = profileData['nationality'] ?? '';
 
         final touristData = await _supabase
             .from('tourists')
@@ -201,15 +224,99 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
             .maybeSingle();
 
         if (touristData != null) {
-          _passportCtrl.text = touristData['passport_number'] ?? '';
-          _passCountryCtrl.text = touristData['passport_issuing_country'] ?? '';
-          _residenceCtrl.text = touristData['country_of_residence'] ?? '';
+          if (_passportCtrl.text.isEmpty) _passportCtrl.text = touristData['passport_number'] ?? '';
+          if (_passCountryCtrl.text.isEmpty) _passCountryCtrl.text = touristData['passport_issuing_country'] ?? '';
+          if (_residenceCtrl.text.isEmpty) _residenceCtrl.text = touristData['country_of_residence'] ?? '';
 
-          if (touristData['passport_issue_date'] != null) {
+          if (_passIssueCtrl.text.isEmpty && touristData['passport_issue_date'] != null) {
             _passIssueCtrl.text = touristData['passport_issue_date'].toString();
           }
-          if (touristData['passport_expiry_date'] != null) {
+          if (_passExpiryCtrl.text.isEmpty && touristData['passport_expiry_date'] != null) {
             _passExpiryCtrl.text = touristData['passport_expiry_date'].toString();
+          }
+        }
+
+        // --- 3. FETCH LATEST PREVIOUS APPLICATION TO FILL THE REST ---
+        final lastApp = await _supabase
+            .from('visa_applications')
+            .select('''
+              id,
+              applicant_information(*),
+              employment_information(*),
+              financial_information(*),
+              travel_information(*)
+            ''')
+            .eq('user_id', profileData['id'])
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        if (lastApp != null) {
+          final applicant = _extractMap(lastApp['applicant_information']);
+          final employment = _extractMap(lastApp['employment_information']);
+          final financial = _extractMap(lastApp['financial_information']);
+          final travel = _extractMap(lastApp['travel_information']);
+
+          // FIXED: Now reliably catches ALL core fields from the previous application if they are still empty
+          if (_phoneCtrl.text.isEmpty) _phoneCtrl.text = applicant?['phone'] ?? '';
+          if (_emailCtrl.text.isEmpty) _emailCtrl.text = applicant?['email'] ?? '';
+          if (_nameCtrl.text.isEmpty) _nameCtrl.text = applicant?['full_name'] ?? '';
+          if (_passportCtrl.text.isEmpty) _passportCtrl.text = applicant?['passport_number'] ?? '';
+          if (_passIssueCtrl.text.isEmpty) _passIssueCtrl.text = applicant?['passport_issue_date']?.toString() ?? '';
+          if (_passExpiryCtrl.text.isEmpty) _passExpiryCtrl.text = applicant?['passport_expiry_date']?.toString() ?? '';
+          if (_passCountryCtrl.text.isEmpty) _passCountryCtrl.text = applicant?['passport_country'] ?? '';
+          if (_nationalityCtrl.text.isEmpty) _nationalityCtrl.text = applicant?['nationality'] ?? '';
+          if (_residenceCtrl.text.isEmpty) _residenceCtrl.text = applicant?['country_of_residence'] ?? '';
+
+          // Secondary Fields
+          if (_dobCtrl.text.isEmpty) _dobCtrl.text = applicant?['date_of_birth'] ?? '';
+          if (_occupCtrl.text.isEmpty) _occupCtrl.text = applicant?['occupation'] ?? '';
+          if (_emergNameCtrl.text.isEmpty) _emergNameCtrl.text = applicant?['emergency_contact_name'] ?? '';
+          if (_emergPhoneCtrl.text.isEmpty) _emergPhoneCtrl.text = applicant?['emergency_contact_phone'] ?? '';
+          if (_emergRelCtrl.text.isEmpty) _emergRelCtrl.text = applicant?['emergency_relationship'] ?? '';
+
+          final fetchedGender = applicant?['gender'];
+          if (_selectedGender == null && fetchedGender != null && ['Male', 'Female', 'Other'].contains(fetchedGender)) _selectedGender = fetchedGender;
+
+          final fetchedMarital = applicant?['marital_status'];
+          if (_selectedMaritalStatus == null && fetchedMarital != null && ['Single', 'Couple', 'Married'].contains(fetchedMarital)) _selectedMaritalStatus = fetchedMarital;
+
+          final fetchedEdu = applicant?['education_level'];
+          if (_selectedEduLevel == null && fetchedEdu != null && _educationLevels.contains(fetchedEdu)) _selectedEduLevel = fetchedEdu;
+
+          if (_compNameCtrl.text.isEmpty) _compNameCtrl.text = employment?['company_name'] ?? '';
+          if (_compAddrCtrl.text.isEmpty) _compAddrCtrl.text = employment?['company_address'] ?? '';
+          if (_compPhoneCtrl.text.isEmpty) _compPhoneCtrl.text = employment?['company_phone'] ?? '';
+          if (_jobTitleCtrl.text.isEmpty) _jobTitleCtrl.text = employment?['job_title'] ?? '';
+          if (_yearsEmpCtrl.text.isEmpty) _yearsEmpCtrl.text = employment?['years_employed']?.toString() ?? '';
+          if (_monthlyIncCtrl.text.isEmpty) _monthlyIncCtrl.text = employment?['monthly_income']?.toString() ?? '';
+          if (_annualIncCtrl.text.isEmpty) _annualIncCtrl.text = employment?['annual_income']?.toString() ?? '';
+
+          final fetchedEmpStat = employment?['employment_status'];
+          if (_selectedEmpStatus == null && fetchedEmpStat != null && _employmentStatuses.contains(fetchedEmpStat)) _selectedEmpStatus = fetchedEmpStat;
+
+          if (_bankNameCtrl.text.isEmpty) _bankNameCtrl.text = financial?['bank_name'] ?? '';
+          if (_accBalCtrl.text.isEmpty) _accBalCtrl.text = financial?['account_balance']?.toString() ?? '';
+          if (_mthlyExpCtrl.text.isEmpty) _mthlyExpCtrl.text = financial?['monthly_expense']?.toString() ?? '';
+
+          if (_purposeCtrl.text.isEmpty) _purposeCtrl.text = travel?['purpose_of_visit'] ?? '';
+          if (_hotelNameCtrl.text.isEmpty) _hotelNameCtrl.text = travel?['hotel_name'] ?? '';
+          if (_hotelAddrCtrl.text.isEmpty) _hotelAddrCtrl.text = travel?['hotel_address'] ?? '';
+          if (_airlineCtrl.text.isEmpty) _airlineCtrl.text = travel?['airline'] ?? '';
+          if (_flightNoCtrl.text.isEmpty) _flightNoCtrl.text = travel?['flight_number'] ?? '';
+
+          final fetchedAccom = travel?['accommodation_type'];
+          if (_selectedAccomType == null && fetchedAccom != null && _accomTypes.contains(fetchedAccom)) _selectedAccomType = fetchedAccom;
+
+          if (_selectedState == null && travel?['intended_destination'] != null) {
+            String dest = travel!['intended_destination'];
+            if (dest.startsWith('Kuala Lumpur - ')) {
+              _selectedState = 'Kuala Lumpur';
+              String zone = dest.replaceAll('Kuala Lumpur - ', '');
+              if (_klZones.contains(zone)) _selectedKlZone = zone;
+            } else if (_malaysiaStates.contains(dest)) {
+              _selectedState = dest;
+            }
           }
         }
       }
@@ -222,7 +329,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
     }
   }
 
-  /// Saves the current text field and dropdown states directly to device cache
   Future<void> _saveDraftDataToCache() async {
     try {
       final user = _supabase.auth.currentUser;
@@ -230,37 +336,40 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = 'visa_draft_${user.id}';
 
-      await prefs.setString('${cacheKey}_dob', _dobCtrl.text);
-      await prefs.setString('${cacheKey}_occup', _occupCtrl.text);
-      await prefs.setString('${cacheKey}_emergName', _emergNameCtrl.text);
-      await prefs.setString('${cacheKey}_emergPhone', _emergPhoneCtrl.text);
-      await prefs.setString('${cacheKey}_emergRel', _emergRelCtrl.text);
-      await prefs.setString('${cacheKey}_compName', _compNameCtrl.text);
-      await prefs.setString('${cacheKey}_compAddr', _compAddrCtrl.text);
-      await prefs.setString('${cacheKey}_compPhone', _compPhoneCtrl.text);
-      await prefs.setString('${cacheKey}_jobTitle', _jobTitleCtrl.text);
-      await prefs.setString('${cacheKey}_yearsEmp', _yearsEmpCtrl.text);
-      await prefs.setString('${cacheKey}_monthlyInc', _monthlyIncCtrl.text);
-      await prefs.setString('${cacheKey}_annualInc', _annualIncCtrl.text);
-      await prefs.setString('${cacheKey}_bankName', _bankNameCtrl.text);
-      await prefs.setString('${cacheKey}_accBal', _accBalCtrl.text);
-      await prefs.setString('${cacheKey}_mthlyExp', _mthlyExpCtrl.text);
-      await prefs.setString('${cacheKey}_purpose', _purposeCtrl.text);
-      await prefs.setString('${cacheKey}_arrDate', _arrDateCtrl.text);
-      await prefs.setString('${cacheKey}_depDate', _depDateCtrl.text);
-      await prefs.setString('${cacheKey}_visaExp', _visaExpCtrl.text);
-      await prefs.setString('${cacheKey}_hotelName', _hotelNameCtrl.text);
-      await prefs.setString('${cacheKey}_hotelAddr', _hotelAddrCtrl.text);
-      await prefs.setString('${cacheKey}_airline', _airlineCtrl.text);
-      await prefs.setString('${cacheKey}_flightNo', _flightNoCtrl.text);
+      final Map<String, dynamic> draftData = {
+        'dob': _dobCtrl.text,
+        'occup': _occupCtrl.text,
+        'emergName': _emergNameCtrl.text,
+        'emergPhone': _emergPhoneCtrl.text,
+        'emergRel': _emergRelCtrl.text,
+        'compName': _compNameCtrl.text,
+        'compAddr': _compAddrCtrl.text,
+        'compPhone': _compPhoneCtrl.text,
+        'jobTitle': _jobTitleCtrl.text,
+        'yearsEmp': _yearsEmpCtrl.text,
+        'monthlyInc': _monthlyIncCtrl.text,
+        'annualInc': _annualIncCtrl.text,
+        'bankName': _bankNameCtrl.text,
+        'accBal': _accBalCtrl.text,
+        'mthlyExp': _mthlyExpCtrl.text,
+        'purpose': _purposeCtrl.text,
+        'arrDate': _arrDateCtrl.text,
+        'depDate': _depDateCtrl.text,
+        'visaExp': _visaExpCtrl.text,
+        'hotelName': _hotelNameCtrl.text,
+        'hotelAddr': _hotelAddrCtrl.text,
+        'airline': _airlineCtrl.text,
+        'flightNo': _flightNoCtrl.text,
+        'gender': _selectedGender ?? '',
+        'marital': _selectedMaritalStatus ?? '',
+        'edu': _selectedEduLevel ?? '',
+        'empStatus': _selectedEmpStatus ?? '',
+        'state': _selectedState ?? '',
+        'klZone': _selectedKlZone ?? '',
+        'accomType': _selectedAccomType ?? '',
+      };
 
-      await prefs.setString('${cacheKey}_gender', _selectedGender ?? '');
-      await prefs.setString('${cacheKey}_marital', _selectedMaritalStatus ?? '');
-      await prefs.setString('${cacheKey}_edu', _selectedEduLevel ?? '');
-      await prefs.setString('${cacheKey}_empStatus', _selectedEmpStatus ?? '');
-      await prefs.setString('${cacheKey}_state', _selectedState ?? '');
-      await prefs.setString('${cacheKey}_klZone', _selectedKlZone ?? '');
-      await prefs.setString('${cacheKey}_accomType', _selectedAccomType ?? '');
+      await prefs.setString(cacheKey, jsonEncode(draftData));
     } catch (e) {
       debugPrint("Failed saving cache: $e");
     }
@@ -268,6 +377,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _nameCtrl.dispose(); _passportCtrl.dispose(); _passIssueCtrl.dispose(); _passExpiryCtrl.dispose();
     _passCountryCtrl.dispose(); _nationalityCtrl.dispose(); _residenceCtrl.dispose();
     _dobCtrl.dispose(); _occupCtrl.dispose();
@@ -403,7 +513,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   }
 
   bool _validateLogicalDates() {
-    // Passport Issue vs Expiry
     DateTime? issue = DateTime.tryParse(_passIssueCtrl.text);
     DateTime? expiry = DateTime.tryParse(_passExpiryCtrl.text);
     if (issue != null && expiry != null && issue.isAfter(expiry)) {
@@ -411,7 +520,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
       return false;
     }
 
-    // Travel Arrival vs Departure
     DateTime? arr = DateTime.tryParse(_arrDateCtrl.text);
     DateTime? dep = DateTime.tryParse(_depDateCtrl.text);
     if (arr != null && dep != null && arr.isAfter(dep)) {
@@ -476,7 +584,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   Future<void> _processPaymentAndSubmit() async {
     if (!_validatePaymentInputs()) return;
 
-    // Save final inputs to cache right before submission
     _saveDraftDataToCache();
 
     setState(() => _processState = AppProcessState.stripeProcessing);
@@ -560,9 +667,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         companyPhone: _compPhoneCtrl.text, jobTitle: _jobTitleCtrl.text, yearsEmployed: _yearsEmpCtrl.text,
         monthlyIncome: _monthlyIncCtrl.text, annualIncome: _annualIncCtrl.text,
 
-
         bankName: _bankNameCtrl.text, accountBalance: _accBalCtrl.text, monthlyExpense: _mthlyExpCtrl.text,
-
 
         purpose: _purposeCtrl.text, arrivalDate: _arrDateCtrl.text, departureDate: _depDateCtrl.text,
         visaExpiryDate: _visaExpCtrl.text, destination: intendedDestination, hotelName: _hotelNameCtrl.text,
@@ -575,6 +680,10 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
       );
 
       double riskScore = (aiResult['risk_score'] as num).toDouble();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('visa_draft_${_supabase.auth.currentUser?.id}');
+
       setState(() {
         _successRate = (100.0 - riskScore).clamp(0.0, 100.0);
         _aiReasoning = aiResult['prediction_reason'] ?? "Assessment finalized successfully.";
@@ -608,7 +717,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
           onPressed: () {
-            _saveDraftDataToCache(); // Cache inputs upon leaving
+            _saveDraftDataToCache();
             Navigator.of(context).pop(false);
           },
         ),
@@ -623,7 +732,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
   Widget _buildBodyContent() {
     if (_isLoadingData) return const Center(child: CircularProgressIndicator(color: Color(0xFF1E3A8A)));
     if (_processState == AppProcessState.stripeProcessing) return _buildStatusView("Payment Processing", Icons.lock_outline, isSpinner: true);
-    if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Successful (MYR 150.00)", Icons.check_circle_rounded, isSuccess: true);
+    if (_processState == AppProcessState.stripeSuccess) return _buildStatusView("Payment Successful with MYR 150.00", Icons.check_circle_rounded, isSuccess: true);
     if (_processState == AppProcessState.aiProcessing) return const _AiProgressView();
     if (_processState == AppProcessState.completed) return _buildCompletedResult();
     return _buildStepperForm();
@@ -683,13 +792,13 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> {
         setState(() => _currentStep = step);
       },
       onStepContinue: () {
-        _saveDraftDataToCache(); // Cache inputs upon step progression
+        _saveDraftDataToCache();
         if (_currentStep < 5) {
           setState(() => _currentStep += 1);
         }
       },
       onStepCancel: () {
-        _saveDraftDataToCache(); // Cache inputs upon step regression
+        _saveDraftDataToCache();
         if (_currentStep > 0) {
           setState(() => _currentStep -= 1);
         }
@@ -895,7 +1004,7 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
                   child: const Icon(Icons.memory_rounded, size: 80, color: Colors.white),
                 ),
                 const SizedBox(height: 24),
-                const Text('AI Calculating Risk Probability', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                const Text('AI Calculating Visa Successful Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                 const SizedBox(height: 8),
                 const SizedBox(height: 40),
 
