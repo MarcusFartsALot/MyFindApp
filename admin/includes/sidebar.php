@@ -26,13 +26,6 @@ function render_sidebar(array $admin, string $active): void
                 </a>
                 <span class="tooltip">Dashboard</span>
             </li>
-            <li class="<?= $active === 'applications' ? 'active' : '' ?>">
-                <a href="new_application.php">
-                    <i class='bx bx-file'></i>
-                    <span class="links_name">New Application</span>
-                </a>
-                <span class="tooltip">New Application</span>
-            </li>
             <li>
                 <a href="profile.php">
                     <i class='bx bx-cog'></i>

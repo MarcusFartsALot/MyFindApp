@@ -68,6 +68,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
+| Helper: Get full Storage URL
+|--------------------------------------------------------------------------
+*/
+function getFullStorageUrl($path) {
+    $supabaseUrl = 'https://kfvhnpkkwxipschhlouk.supabase.co';
+    if (empty($path)) return null;
+    if (filter_var($path, FILTER_VALIDATE_URL)) return $path;
+    
+    // 如果路径已经包含 bucket 名称
+    if (strpos($path, 'incident-evidence/') === 0) {
+        return rtrim($supabaseUrl, '/') . '/storage/v1/object/public/' . $path;
+    }
+    
+    return rtrim($supabaseUrl, '/') . '/storage/v1/object/public/incident-evidence/' . ltrim($path, '/');
+}
+
+/*
+|--------------------------------------------------------------------------
 | Load Citizen Reports with Stats
 |--------------------------------------------------------------------------
 */
@@ -78,7 +96,6 @@ $pendingCount = 0;
 $rejectedCount = 0;
 $resolvedCount = 0;
 
-// Get Supabase URL for building image URLs
 $supabaseUrl = 'https://kfvhnpkkwxipschhlouk.supabase.co';
 
 try {
@@ -124,7 +141,7 @@ try {
         $reports = [];
     }
 
-    // ✅ 按 urgency_level 排序（Emergency → High → Normal）
+    // 按 urgency_level 排序
     usort($reports, function($a, $b) {
         $urgencyOrder = [
             'Emergency' => 0,
@@ -141,15 +158,24 @@ try {
         return $orderA - $orderB;
     });
     
-    // Process media_paths to generate accessible image URLs
+    // Process media_paths to generate accessible URLs
     foreach ($reports as &$report) {
         if (isset($report['media_paths']) && is_array($report['media_paths'])) {
             $report['media_urls'] = array_map(function($path) use ($supabaseUrl) {
-                $filename = basename($path);
-                $bucketName = 'incident-evidence';
-                $filePath = 'Image/' . $filename;
+                // 获取文件扩展名
+                $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+                $isVideo = in_array($extension, ['mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'flv', '3gp']);
+                $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']);
                 
-                return $supabaseUrl . '/storage/v1/object/public/' . $bucketName . '/' . rawurlencode($filePath);
+                // 使用 getFullStorageUrl 生成完整 URL
+                $url = getFullStorageUrl($path);
+                
+                return [
+                    'url' => $url,
+                    'type' => $isVideo ? 'video' : ($isImage ? 'image' : 'unknown'),
+                    'extension' => $extension,
+                    'filename' => basename($path)
+                ];
             }, $report['media_paths']);
         }
     }
@@ -395,10 +421,6 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     vertical-align: middle;
 }
 
-.report-table tbody tr {
-    transition: background 0.15s;
-}
-
 .report-table tbody tr:hover {
     background: #f8fafc;
 }
@@ -438,12 +460,6 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 /* =========================================================
    ACTION BUTTONS
 ========================================================= */
-.action-group {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
 .btn-view {
     padding: 6px 18px;
     border: 1px solid #e5e7eb;
@@ -671,49 +687,90 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     text-decoration: underline;
 }
 
-.drawer-body .evidence-grid {
+/* =========================================================
+   EVIDENCE GRID - Image & Video
+========================================================= */
+.evidence-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
     margin-top: 8px;
 }
 
-.drawer-body .evidence-item {
+.evidence-item {
     position: relative;
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
     border: 1px solid #e5e7eb;
     cursor: pointer;
     background: #f8fafc;
-    aspect-ratio: 1;
-    transition: transform 0.2s;
+    aspect-ratio: 16/12;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.drawer-body .evidence-item:hover {
+.evidence-item:hover {
     transform: scale(1.02);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    z-index: 5;
 }
 
-.drawer-body .evidence-item img {
+.evidence-item img,
+.evidence-item video {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
 }
 
-.drawer-body .evidence-item .image-number {
+.evidence-item .play-overlay {
     position: absolute;
-    bottom: 4px;
-    right: 4px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    background: rgba(0,0,0,0.6);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 28px;
+    pointer-events: none;
+    transition: transform 0.2s;
+}
+
+.evidence-item:hover .play-overlay {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.evidence-item .file-badge {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
     background: rgba(0,0,0,0.7);
     color: white;
     font-size: 10px;
-    padding: 2px 8px;
+    padding: 2px 10px;
     border-radius: 12px;
+    font-weight: 500;
 }
 
-.drawer-body .evidence-placeholder {
+.evidence-item .file-badge.video {
+    background: rgba(220, 38, 38, 0.8);
+}
+
+.evidence-item .file-badge.image {
+    background: rgba(16, 185, 129, 0.8);
+}
+
+.evidence-item .file-badge.unknown {
+    background: rgba(107, 114, 128, 0.8);
+}
+
+.evidence-placeholder {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     font-size: 12px;
@@ -723,7 +780,7 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     height: 100%;
 }
 
-.drawer-body .evidence-placeholder i {
+.evidence-placeholder i {
     font-size: 32px;
     display: block;
     margin-bottom: 4px;
@@ -874,6 +931,58 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
 }
 
 /* =========================================================
+   VIDEO VIEWER (Modal)
+========================================================= */
+.video-viewer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.video-viewer-overlay.active {
+    display: flex;
+}
+
+.video-viewer-overlay .close-btn {
+    position: absolute;
+    top: 20px;
+    right: 30px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 40px;
+    cursor: pointer;
+    z-index: 2001;
+    transition: transform 0.2s;
+}
+
+.video-viewer-overlay .close-btn:hover {
+    transform: scale(1.2);
+}
+
+.video-viewer-overlay .viewer-video {
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    background: #000;
+}
+
+.video-viewer-overlay .viewer-info {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+}
+
+/* =========================================================
    RESPONSIVE
 ========================================================= */
 @media (max-width: 768px) {
@@ -920,8 +1029,8 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
         height: 200px;
     }
 
-    .drawer-body .evidence-grid {
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    .evidence-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     }
 }
 
@@ -947,8 +1056,8 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
         height: 180px;
     }
 
-    .drawer-body .evidence-grid {
-        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    .evidence-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     }
 
     .report-table th,
@@ -1177,6 +1286,18 @@ render_admin_start('Approve Citizen Reports', $admin, 'dashboard');
     <div class="viewer-info">Click anywhere or press ESC to close</div>
 </div>
 
+<!-- =========================================================
+     VIDEO VIEWER (Modal)
+========================================================= -->
+<div class="video-viewer-overlay" id="videoViewer" onclick="closeVideoViewer()">
+    <button class="close-btn" onclick="closeVideoViewer()">&times;</button>
+    <video class="viewer-video" id="viewerVideo" controls autoplay>
+        <source id="videoSource" src="" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+    <div class="viewer-info">Click anywhere or press ESC to close</div>
+</div>
+
 <script>
 // Report data for drawer
 const reportsData = <?= json_encode($reports) ?>;
@@ -1254,29 +1375,70 @@ function openDrawer(reportId) {
         `;
     }
 
-    // ✅ 修复：使用 media_urls 而不是 media_paths
+    // ✅ 生成 Evidence HTML - 支持图片和视频
     let evidenceHtml = '';
     if (report.media_urls && report.media_urls.length > 0) {
+        let imageCount = 0;
+        let videoCount = 0;
+        
+        const itemsHtml = report.media_urls.map((media, index) => {
+            const isVideo = media.type === 'video';
+            const isImage = media.type === 'image';
+            const url = media.url;
+            const filename = media.filename || 'file';
+            
+            if (isVideo) videoCount++;
+            else if (isImage) imageCount++;
+            
+            if (isVideo) {
+                return `
+                    <div class="evidence-item" onclick="openVideoViewer('${url}')" title="${filename}">
+                        <video src="${url}" muted preload="metadata" onloadedmetadata="this.poster = this.currentTime"></video>
+                        <div class="play-overlay">▶</div>
+                        <span class="file-badge video">🎬 Video</span>
+                    </div>
+                `;
+            } else if (isImage) {
+                return `
+                    <div class="evidence-item" onclick="openImageViewer('${url}')" title="${filename}">
+                        <img src="${url}" alt="Evidence ${index + 1}" loading="lazy"
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'evidence-placeholder\\'><i class=\\'bx bx-image\\'></i>${filename}</div>'">
+                        <span class="file-badge image">📷 Image</span>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="evidence-item" style="cursor:default;">
+                        <div class="evidence-placeholder">
+                            <i class='bx bx-file'></i>
+                            ${filename}
+                        </div>
+                        <span class="file-badge unknown">📄 Unknown</span>
+                    </div>
+                `;
+            }
+        }).join('');
+        
+        let summaryText = '';
+        if (imageCount > 0 && videoCount > 0) {
+            summaryText = `${imageCount} image${imageCount > 1 ? 's' : ''} & ${videoCount} video${videoCount > 1 ? 's' : ''}`;
+        } else if (imageCount > 0) {
+            summaryText = `${imageCount} image${imageCount > 1 ? 's' : ''}`;
+        } else if (videoCount > 0) {
+            summaryText = `${videoCount} video${videoCount > 1 ? 's' : ''}`;
+        } else {
+            summaryText = `${report.media_urls.length} file${report.media_urls.length > 1 ? 's' : ''}`;
+        }
+        
         evidenceHtml = `
             <hr class="detail-divider">
             <div class="detail-section">
-                <span class="detail-label">📎 Evidence (${report.media_urls.length} file${report.media_urls.length > 1 ? 's' : ''})</span>
+                <span class="detail-label">📎 Evidence (${summaryText})</span>
                 <div class="evidence-grid">
-                    ${report.media_urls.map((imageUrl, index) => {
-                        const fileName = imageUrl.split('/').pop();
-                        return `
-                            <div class="evidence-item" onclick="openImageViewer('${imageUrl}')" title="${fileName}">
-                                <img src="${imageUrl}" 
-                                     alt="Evidence ${index + 1}" 
-                                     loading="lazy"
-                                     onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'evidence-placeholder\\'><i class=\\'bx bx-image\\'></i>${fileName}</div>'">
-                                <span class="image-number">${index + 1}</span>
-                            </div>
-                        `;
-                    }).join('')}
+                    ${itemsHtml}
                 </div>
                 <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">
-                    <i class='bx bx-info-circle'></i> Click on an image to view full size
+                    <i class='bx bx-info-circle'></i> Click on images to view full size, click on videos to play
                 </div>
             </div>
         `;
@@ -1428,10 +1590,41 @@ function closeImageViewer() {
     document.getElementById('viewerImage').src = '';
 }
 
-// Close image viewer on ESC
+// Video Viewer functions
+function openVideoViewer(videoUrl) {
+    const viewer = document.getElementById('videoViewer');
+    const video = document.getElementById('viewerVideo');
+    const source = document.getElementById('videoSource');
+    
+    // 暂停当前播放
+    video.pause();
+    
+    // 设置新源
+    source.src = videoUrl;
+    video.load();
+    
+    viewer.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    // 自动播放
+    video.play().catch(function(e) {
+        console.log('Auto-play prevented:', e);
+    });
+}
+
+function closeVideoViewer() {
+    const viewer = document.getElementById('videoViewer');
+    const video = document.getElementById('viewerVideo');
+    video.pause();
+    viewer.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// Close on ESC
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeImageViewer();
+        closeVideoViewer();
         if (document.getElementById('drawerPanel').classList.contains('active')) {
             closeDrawer();
         }
