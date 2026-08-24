@@ -202,6 +202,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         itemBuilder: (context, index) {
           final item = items[index];
           final bool isRead = item['is_read'] == true;
+          final String title = item['title'] ?? 'Notification';
+
+          // Dynamically assign icons based on the activity title
+          IconData displayIcon = Icons.task_alt_rounded;
+          if (isAlertCategory) {
+            displayIcon = Icons.warning_amber_rounded;
+          } else {
+            if (title.contains('Security')) {
+              displayIcon = Icons.shield_outlined;
+            } else if (title.contains('Profile')) {
+              displayIcon = Icons.manage_accounts_outlined;
+            } else if (title.contains('Visa Application')) {
+              displayIcon = Icons.airplane_ticket_outlined;
+            }
+          }
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -236,7 +251,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    isAlertCategory ? Icons.warning_amber_rounded : Icons.task_alt_rounded,
+                    displayIcon,
                     color: isAlertCategory ? const Color(0xFFDC2626) : const Color(0xFF1E3A8A),
                     size: 20,
                   ),
@@ -251,7 +266,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              item['title'] ?? 'Notification',
+                              title,
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,

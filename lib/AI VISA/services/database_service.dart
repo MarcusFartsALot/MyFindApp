@@ -110,7 +110,7 @@ class DatabaseService {
       await _supabase.from('notifications').insert({
         'user_id': userId,
         'title': 'Visa Application Submitted',
-        'message': 'Your VM2026 application for destination $destination has been successfully submitted and AI pre-screened. Payment of MYR $paymentAmount received.',
+        'message': 'Your visa application for destination $destination has been successfully submitted and AI Calculated. Payment of MYR $paymentAmount received.',
         'type': 'Activity',
       });
 

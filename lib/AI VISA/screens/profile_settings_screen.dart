@@ -28,11 +28,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   late TextEditingController _nicknameController;
   late TextEditingController _emailController;
 
+  // NEW: Strict baseline tracking for text fields
+  late String _initialNickname;
+
   File? _newProfilePhoto;
   Uint8List? _webProfilePhoto;
 
   bool _isSaving = false;
   bool _hasChanges = false;
+
+  // NEW: Flag to track if the current photo preview is an unsaved change
+  bool _photoHasUnsavedChanges = false;
 
   // Tourist Details from M100
   bool _isLoadingTourist = true;
@@ -42,9 +48,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   void initState() {
     super.initState();
     _officialNameController = TextEditingController(text: widget.profile.fullName);
-    _nicknameController = TextEditingController(
-      text: widget.profile.nickname ?? widget.profile.fullName.split(' ')[0],
-    );
+
+    // Baseline the nickname perfectly on load
+    _initialNickname = widget.profile.nickname ?? widget.profile.fullName.split(' ')[0];
+    _nicknameController = TextEditingController(text: _initialNickname);
+
     _emailController = TextEditingController(text: widget.profile.email);
 
     _fetchTouristDetails();
@@ -83,6 +91,94 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     if (!_hasChanges) setState(() => _hasChanges = true);
   }
 
+  /// Custom UI Popup Dialog for Success, Error, and Validation Feedback
+  void _showStatusDialog({
+    required String title,
+    required String message,
+    bool isError = false,
+    bool isInfo = false,
+    String buttonText = "Understood",
+    VoidCallback? onConfirm,
+  }) {
+    if (!mounted) return;
+
+    final Color themeColor = isError
+        ? const Color(0xFFDC2626)
+        : (isInfo ? const Color(0xFF1E3A8A) : const Color(0xFF15803D));
+
+    final IconData statusIcon = isError
+        ? Icons.error_outline_rounded
+        : (isInfo ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: themeColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(statusIcon, color: themeColor, size: 48),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF475569),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: themeColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  if (onConfirm != null) onConfirm();
+                },
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickProfilePhoto() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -95,7 +191,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         final PlatformFile fileData = result.files.single;
 
         if (fileData.size > 5 * 1024 * 1024) {
-          _showSnackBar("Invalid file. Please upload an image under 5MB.", isError: true);
+          _showStatusDialog(
+            title: "File Too Large",
+            message: "The selected image exceeds 5MB. Please choose a smaller photo.",
+            isError: true,
+          );
           return;
         }
 
@@ -106,24 +206,42 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             _newProfilePhoto = File(fileData.path!);
           }
           _hasChanges = true;
+          _photoHasUnsavedChanges = true; // Mark that the photo specifically changed
         });
+
+        _showStatusDialog(
+          title: "New Photo Selected",
+          message: "Your new profile picture is ready. Click 'Save Profile Changes' below to apply it.",
+          isInfo: true,
+        );
       }
     } catch (e) {
-      _showSnackBar("Error selecting photo. Please try again.", isError: true);
+      _showStatusDialog(
+        title: "Photo Selection Failed",
+        message: "An error occurred while choosing your image. Please try again.",
+        isError: true,
+      );
     }
   }
 
   Future<void> _saveProfileChanges() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      _showStatusDialog(
+        title: "Update Error",
+        message: "Nickname fields cannot be empty.",
+        isError: true,
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
 
     try {
       String? photoUrl = widget.profile.profileImage;
 
-      bool photoChanged = _webProfilePhoto != null || _newProfilePhoto != null;
-      String originalNickname = widget.profile.nickname ?? widget.profile.fullName.split(' ')[0];
-      bool nicknameChanged = _nicknameController.text.trim() != originalNickname;
+      // FIXED: Uses the strict tracking flags to accurately capture the specific action
+      bool photoChanged = _photoHasUnsavedChanges;
+      bool nicknameChanged = _nicknameController.text.trim() != _initialNickname.trim();
 
       if (photoChanged) {
         final String fileName =
@@ -151,23 +269,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.profile.id);
 
-      setState(() {
-        _isSaving = false;
-        _hasChanges = false;
-      });
-
       List<String> updatedItems = [];
       if (photoChanged) updatedItems.add("profile photo");
       if (nicknameChanged) updatedItems.add("nickname");
 
-      if (updatedItems.isNotEmpty) {
-        String specificMessage = "Your profile was updated.";
-        if (updatedItems.length == 1) {
-          specificMessage = "Your ${updatedItems[0]} was successfully updated.";
-        } else if (updatedItems.length > 1) {
-          specificMessage = "Your ${updatedItems.join(' and ')} were successfully updated.";
-        }
+      String specificMessage = "Your profile was updated.";
+      if (updatedItems.length == 1) {
+        specificMessage = "Your ${updatedItems[0]} was successfully updated.";
+      } else if (updatedItems.length > 1) {
+        specificMessage = "Your ${updatedItems.join(' and ')} were successfully updated.";
+      }
 
+      if (updatedItems.isNotEmpty) {
         await _supabase.from('notifications').insert({
           'user_id': widget.profile.id,
           'title': 'Profile Updated',
@@ -176,12 +289,29 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         });
       }
 
+      // Reset the tracking flags to prevent duplicate trigger bugs on next save
+      setState(() {
+        _isSaving = false;
+        _hasChanges = false;
+        _photoHasUnsavedChanges = false;
+        _initialNickname = _nicknameController.text.trim();
+      });
+
       widget.onProfileUpdated();
 
-      _showSnackBar("Profile details updated successfully!");
+      // UI Success Modal Prompt
+      _showStatusDialog(
+        title: "Profile Updated Successfully!",
+        message: specificMessage,
+        isError: false,
+      );
     } catch (e) {
       setState(() => _isSaving = false);
-      _showSnackBar("Failed to update profile: $e", isError: true);
+      _showStatusDialog(
+        title: "Update Failed",
+        message: "Unable to save your profile changes. Error: $e",
+        isError: true,
+      );
     }
   }
 
@@ -241,7 +371,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
                           focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFDC2626))),
                         ),
-                        validator: (val) => val == null || val.isEmpty ? 'Required' : null,
+                        validator: (val) => val == null || val.isEmpty ? 'Please enter your current password' : null,
                       ),
                       const SizedBox(height: 14),
                       TextFormField(
@@ -333,14 +463,27 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
                       if (mounted) {
                         Navigator.of(dialogContext).pop();
-                        _showSnackBar("Your password has been changed successfully.");
+                        // UI Prompt on Password Success
+                        _showStatusDialog(
+                          title: "Password Changed!",
+                          message: "Your account password have been successfully updated. You can now use your new password for future logins.",
+                          isError: false,
+                        );
                       }
                     } on AuthException catch (_) {
                       setModalState(() => isUpdatingPwd = false);
-                      _showSnackBar("Invalid current password or criteria not met.", isError: true);
+                      _showStatusDialog(
+                        title: "Password Update Failed",
+                        message: "The current password entered is incorrect.",
+                        isError: true,
+                      );
                     } catch (e) {
                       setModalState(() => isUpdatingPwd = false);
-                      _showSnackBar("System Error.", isError: true);
+                      _showStatusDialog(
+                        title: "System Error",
+                        message: "A network or system error occurred while updating your password.",
+                        isError: true,
+                      );
                     }
                   },
                   child: isUpdatingPwd
@@ -411,17 +554,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF15803D),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -542,7 +674,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                   controller: _officialNameController,
                   readOnly: true,
                   onTap: () {
-                    _showSnackBar("Official name cannot be changed as it must match your identity documents.", isError: true);
+                    _showStatusDialog(
+                      title: "Official Name Locked",
+                      message: "Your official full name cannot be changed directly as it must strictly match your verified travel passport and identity documents.",
+                      isInfo: true,
+                    );
                   },
                   decoration: InputDecoration(
                     labelText: 'Official Name',
@@ -563,13 +699,20 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     fillColor: Colors.white,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  validator: (val) => val == null || val.isEmpty ? 'Nickname cannot be empty' : null,
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Nickname cannot be empty' : null,
                 ),
                 const SizedBox(height: 14),
 
                 TextFormField(
                   controller: _emailController,
                   readOnly: true,
+                  onTap: () {
+                    _showStatusDialog(
+                      title: "Registered Email",
+                      message: "Your email is your unique account identifier and cannot be modified from profile settings.",
+                      isInfo: true,
+                    );
+                  },
                   decoration: InputDecoration(
                     labelText: 'Email Address',
                     filled: true,
@@ -683,17 +826,17 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                   Row(
                                     children: [
                                       Icon(
-                                          _touristData?['verification_status'] == 'approved' ? Icons.verified_user_rounded : Icons.pending_actions_rounded,
-                                          color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706),
-                                          size: 18
+                                        _touristData?['verification_status'] == 'approved' ? Icons.verified_user_rounded : Icons.pending_actions_rounded,
+                                        color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706),
+                                        size: 18,
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
                                         _touristData?['verification_status'] == 'approved' ? 'Identity Verified' : 'Verification Pending',
                                         style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                            color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706)
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: _touristData?['verification_status'] == 'approved' ? const Color(0xFF15803D) : const Color(0xFFD97706),
                                         ),
                                       ),
                                     ],

@@ -38,6 +38,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
             employment_information(*),
             financial_information(*),
             travel_information(*),
+            supporting_documents(*),
             payment_transactions(*)
           ''')
           .eq('user_id', widget.profile.id)
@@ -52,9 +53,111 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        _showSnackBar("Unable to query history records.", isError: true);
+        _showStatusDialog(
+          title: "Query Error",
+          message: "Unable to retrieve your visa history records at this moment. Please check your internet connection.",
+          isError: true,
+        );
       }
     }
+  }
+
+  /// Custom UI Modal Dialog for Success, Error, and Validation Feedback
+  void _showStatusDialog({
+    required String title,
+    required String message,
+    bool isError = false,
+    bool isInfo = false,
+    String buttonText = "Understood",
+    VoidCallback? onConfirm,
+  }) {
+    if (!mounted) return;
+
+    final Color themeColor = isError
+        ? const Color(0xFFDC2626)
+        : (isInfo ? const Color(0xFF1E3A8A) : const Color(0xFF15803D));
+
+    final IconData statusIcon = isError
+        ? Icons.error_outline_rounded
+        : (isInfo ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: themeColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(statusIcon, color: themeColor, size: 48),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF475569),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: themeColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  if (onConfirm != null) onConfirm();
+                },
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Formats the AI reasoning by forcing line breaks before numbers like "1)", "2)", or "1.", "2."
+  String _formatAiReasoning(String? rawReason) {
+    if (rawReason == null || rawReason.trim().isEmpty) return 'N/A';
+    String formatted = rawReason.replaceAllMapped(
+        RegExp(r'\s+(\d+[\)\.])\s*'),
+            (Match m) => '\n\n${m[1]} '
+    );
+    return formatted.trim();
   }
 
   Future<void> _downloadPdfReport(Map<String, dynamic> app) async {
@@ -70,9 +173,12 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
       final travel = _extractMap(app['travel_information']);
       final prediction = _extractMap(app['risk_predictions']);
       final payment = _extractMap(app['payment_transactions']);
+      final documents = _extractMap(app['supporting_documents']);
 
       final double riskScore = double.tryParse(prediction?['risk_score']?.toString() ?? '0') ?? 0.0;
       final double successRate = 100.0 - riskScore;
+
+      final formattedReason = _formatAiReasoning(prediction?['prediction_reason']);
 
       final pdf = pw.Document();
 
@@ -106,23 +212,32 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               // 1. AI Assessment Result
               _buildPdfSectionTitle("1. AI RISK ASSESSMENT RESULT"),
               pw.Container(
-                padding: const pw.EdgeInsets.all(12),
-                decoration: pw.BoxDecoration(color: PdfColors.grey100, border: pw.Border.all(color: PdfColors.grey400)),
+                padding: const pw.EdgeInsets.all(16),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey50,
+                  border: pw.Border.all(color: PdfColors.grey400),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text("Visa Success Probability: ${successRate.toStringAsFixed(1)}%", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
                     pw.Text("Risk Level: ${prediction?['risk_level'] ?? 'N/A'}"),
                     pw.Text("System Recommendation: ${prediction?['recommendation'] ?? 'N/A'}"),
+                    pw.SizedBox(height: 12),
+                    pw.Text("Assessment Reasoning:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
-                    pw.Text("Assessment Reasoning:"),
-                    pw.Text(prediction?['prediction_reason'] ?? 'N/A', style: const pw.TextStyle(color: PdfColors.grey700)),
+                    pw.Text(
+                      formattedReason,
+                      style: const pw.TextStyle(color: PdfColors.grey800, lineSpacing: 1.5),
+                      textAlign: pw.TextAlign.left,
+                    ),
                   ],
                 ),
               ),
               pw.SizedBox(height: 20),
 
-              // 2. Applicant Information
+              // 2. Tourist Information
               _buildPdfSectionTitle("2. TOURIST INFORMATION"),
               _buildPdfRow("Full Name:", applicant?['full_name']),
               _buildPdfRow("Passport No:", applicant?['passport_number']),
@@ -174,6 +289,13 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
               _buildPdfRow("Accommodation Type:", travel?['accommodation_type']),
               _buildPdfRow("Airline:", travel?['airline']),
               _buildPdfRow("Flight Number:", travel?['flight_number']),
+              pw.SizedBox(height: 16),
+
+              // 6. Supporting Documents
+              _buildPdfSectionTitle("6. SUPPORTING DOCUMENTS"),
+              _buildPdfRow("Document Attached:", documents != null && documents['file_url'] != null ? 'Yes (Uploaded)' : 'No Document Provided'),
+              if (documents != null && documents['document_type'] != null)
+                _buildPdfRow("Document Type:", documents['document_type']),
             ];
           },
         ),
@@ -184,9 +306,17 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
         name: 'Visa_Assessment_Report_${appId.substring(0, 8)}.pdf',
       );
 
-      _showSnackBar("Your PDF visa report has been downloaded successfully!");
+      _showStatusDialog(
+        title: "Report Downloaded Successfully",
+        message: "Your official visa assessment PDF report has been generated.",
+        isError: false,
+      );
     } catch (e) {
-      _showSnackBar("Error generating PDF report.", isError: true);
+      _showStatusDialog(
+        title: "Download Failed",
+        message: "An unexpected error occurred while generating the PDF report. Please try again.",
+        isError: true,
+      );
     }
   }
 
@@ -217,17 +347,6 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
       return Map<String, dynamic>.from(source);
     }
     return null;
-  }
-
-  void _showSnackBar(String message, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF15803D),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
