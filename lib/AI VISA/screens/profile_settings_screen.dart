@@ -97,7 +97,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     required String message,
     bool isError = false,
     bool isInfo = false,
-    String buttonText = "Understood",
+    String buttonText = "OK",
     VoidCallback? onConfirm,
   }) {
     if (!mounted) return;

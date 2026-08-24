@@ -130,6 +130,94 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     }
   }
 
+  /// Custom UI Popup Dialog for Success, Error, and Validation Feedback
+  void _showStatusDialog({
+    required String title,
+    required String message,
+    bool isError = false,
+    bool isInfo = false,
+    String buttonText = "OK",
+    VoidCallback? onConfirm,
+  }) {
+    if (!mounted) return;
+
+    final Color themeColor = isError
+        ? const Color(0xFFDC2626)
+        : (isInfo ? const Color(0xFF1E3A8A) : const Color(0xFF15803D));
+
+    final IconData statusIcon = isError
+        ? Icons.error_outline_rounded
+        : (isInfo ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: themeColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(statusIcon, color: themeColor, size: 48),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF475569),
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: themeColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  if (onConfirm != null) onConfirm();
+                },
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Map<String, dynamic>? _extractMap(dynamic source) {
     if (source is List && source.isNotEmpty) {
       return Map<String, dynamic>.from(source.first as Map);
@@ -257,7 +345,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           final financial = _extractMap(lastApp['financial_information']);
           final travel = _extractMap(lastApp['travel_information']);
 
-          // FIXED: Now reliably catches ALL core fields from the previous application if they are still empty
           if (_phoneCtrl.text.isEmpty) _phoneCtrl.text = applicant?['phone'] ?? '';
           if (_emailCtrl.text.isEmpty) _emailCtrl.text = applicant?['email'] ?? '';
           if (_nameCtrl.text.isEmpty) _nameCtrl.text = applicant?['full_name'] ?? '';
@@ -268,7 +355,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           if (_nationalityCtrl.text.isEmpty) _nationalityCtrl.text = applicant?['nationality'] ?? '';
           if (_residenceCtrl.text.isEmpty) _residenceCtrl.text = applicant?['country_of_residence'] ?? '';
 
-          // Secondary Fields
           if (_dobCtrl.text.isEmpty) _dobCtrl.text = applicant?['date_of_birth'] ?? '';
           if (_occupCtrl.text.isEmpty) _occupCtrl.text = applicant?['occupation'] ?? '';
           if (_emergNameCtrl.text.isEmpty) _emergNameCtrl.text = applicant?['emergency_contact_name'] ?? '';
@@ -513,17 +599,35 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
   }
 
   bool _validateLogicalDates() {
-    DateTime? issue = DateTime.tryParse(_passIssueCtrl.text);
-    DateTime? expiry = DateTime.tryParse(_passExpiryCtrl.text);
-    if (issue != null && expiry != null && issue.isAfter(expiry)) {
-      _showSnackBar("Passport Issue Date cannot be after Expiry Date (Step 1).", isError: true);
+    DateTime? passIssue = DateTime.tryParse(_passIssueCtrl.text);
+    DateTime? passExpiry = DateTime.tryParse(_passExpiryCtrl.text);
+    if (passIssue != null && passExpiry != null && passIssue.isAfter(passExpiry)) {
+      _showStatusDialog(
+        title: "Invalid Passport Dates",
+        message: "Passport Issue Date cannot be after the Expiry Date.",
+        isError: true,
+      );
       return false;
     }
 
     DateTime? arr = DateTime.tryParse(_arrDateCtrl.text);
     DateTime? dep = DateTime.tryParse(_depDateCtrl.text);
     if (arr != null && dep != null && arr.isAfter(dep)) {
-      _showSnackBar("Arrival Date cannot be after Departure Date (Step 4).", isError: true);
+      _showStatusDialog(
+        title: "Invalid Travel Dates",
+        message: "Arrival Date cannot be after the Departure Date.",
+        isError: true,
+      );
+      return false;
+    }
+
+    DateTime? visaExp = DateTime.tryParse(_visaExpCtrl.text);
+    if (dep != null && visaExp != null && dep.isAfter(visaExp)) {
+      _showStatusDialog(
+        title: "Invalid Visa Dates",
+        message: "Visa Expiry Date must be after or on the Departure Date.",
+        isError: true,
+      );
       return false;
     }
 
@@ -559,7 +663,11 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
   bool _validatePaymentInputs() {
     final missingFormFields = _getMissingMandatoryFields();
     if (missingFormFields.isNotEmpty) {
-      _showSnackBar("Missing required fields: ${missingFormFields.join(', ')}", isError: true);
+      _showStatusDialog(
+        title: "Missing Information",
+        message: "Please fill in the following required fields:\n${missingFormFields.join(', ')}",
+        isError: true,
+      );
       return false;
     }
 
@@ -567,15 +675,27 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
 
     final cleanedCardNumber = _cardNumberCtrl.text.replaceAll(' ', '').replaceAll('-', '');
     if (!RegExp(r'^\d{16}$').hasMatch(cleanedCardNumber)) {
-      _showSnackBar("Card Number must be exactly 16 digits.", isError: true);
+      _showStatusDialog(
+        title: "Payment Error",
+        message: "Card Number must be exactly 16 digits.",
+        isError: true,
+      );
       return false;
     }
     if (!RegExp(r'^(0[1-9]|1[0-2])\/\d{2}$').hasMatch(_cardExpiryCtrl.text.trim())) {
-      _showSnackBar("Invalid Expiry Date format. Use MM/YY (e.g. 12/28).", isError: true);
+      _showStatusDialog(
+        title: "Payment Error",
+        message: "Invalid Expiry Date format. Please use MM/YY (e.g., 12/28).",
+        isError: true,
+      );
       return false;
     }
     if (!RegExp(r'^\d{3}$').hasMatch(_cardCvcCtrl.text.trim())) {
-      _showSnackBar("CVC must be exactly 3 digits.", isError: true);
+      _showStatusDialog(
+        title: "Payment Error",
+        message: "CVC must be exactly 3 digits.",
+        isError: true,
+      );
       return false;
     }
     return true;
@@ -691,19 +811,12 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
       });
     } catch (e) {
       setState(() => _processState = AppProcessState.fillingForm);
-      _showSnackBar("AI calculation error: $e", isError: true);
+      _showStatusDialog(
+        title: "AI Calculation Error",
+        message: "An error occurred during AI processing: $e",
+        isError: true,
+      );
     }
-  }
-
-  void _showSnackBar(String msg, {bool isError = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF15803D),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   @override
@@ -1004,7 +1117,7 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
                   child: const Icon(Icons.memory_rounded, size: 80, color: Colors.white),
                 ),
                 const SizedBox(height: 24),
-                const Text('AI Calculating Visa Successful Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                const Text('AI Calculating Visa Application Successful Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                 const SizedBox(height: 8),
                 const SizedBox(height: 40),
 

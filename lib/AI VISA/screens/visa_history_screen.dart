@@ -68,7 +68,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
     required String message,
     bool isError = false,
     bool isInfo = false,
-    String buttonText = "Understood",
+    String buttonText = "OK",
     VoidCallback? onConfirm,
   }) {
     if (!mounted) return;
