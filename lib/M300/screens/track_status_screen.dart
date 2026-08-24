@@ -117,8 +117,8 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
     final status = IncidentReportStatus.fromRaw(report['status']?.toString());
     final date = report['created_at'] != null
         ? DateTime.parse(
-      report['created_at'],
-    ).toLocal().toString().split(' ')[0]
+            report['created_at'],
+          ).toLocal().toString().split(' ')[0]
         : 'Recent';
     final description = report['description'] ?? '';
 
@@ -362,16 +362,16 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                   ),
                   suffixIcon: _ticketController.text.isNotEmpty
                       ? IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      color: Color(0xFF64748B),
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      _ticketController.clear();
-                      setState(() {});
-                    },
-                  )
+                          icon: const Icon(
+                            Icons.close,
+                            color: Color(0xFF64748B),
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            _ticketController.clear();
+                            setState(() {});
+                          },
+                        )
                       : null,
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(30.0),

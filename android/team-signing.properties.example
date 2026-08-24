@@ -1,0 +1,5 @@
+# Copy this file to team-signing.properties after receiving the team keystore.
+storeFile=keystores/team-debug.jks
+storePassword=YOUR_PRIVATE_PASSWORD
+keyAlias=YOUR_KEY_ALIAS
+keyPassword=YOUR_PRIVATE_PASSWORD

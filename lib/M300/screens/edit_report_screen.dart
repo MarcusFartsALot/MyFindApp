@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/exceptions/app_exceptions.dart';
 import '../models/incident_report_model.dart';
 import '../services/community_report_service.dart';
+import '../widgets/edge_swipe_back.dart';
 
 class EditReportScreen extends StatefulWidget {
   final IncidentReportModel report;
@@ -82,6 +83,9 @@ class _EditReportScreenState extends State<EditReportScreen> {
     _longitude = TextEditingController(text: initialLng.toStringAsFixed(6));
 
     _existingMediaPaths = List.from(widget.report.mediaPaths);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _requestLocationAccess(),
+    );
   }
 
   @override
@@ -133,38 +137,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
     setState(() => _locating = true);
 
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Location services are off. Enable GPS or pin the map manually.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Location permission was not granted. You can pin the map manually.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
-      _locationPermissionGranted = true;
+      if (!await _requestLocationAccess()) return;
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -188,6 +161,82 @@ class _EditReportScreenState extends State<EditReportScreen> {
     } finally {
       if (mounted) setState(() => _locating = false);
     }
+  }
+
+  Future<bool> _requestLocationAccess() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        await _showLocationPromptDialog(
+          title: 'Location Services Disabled',
+          content:
+              'Device location is turned off. Enable it for quick GPS pinning, or keep the saved incident pin.',
+          onConfirm: Geolocator.openLocationSettings,
+        );
+      }
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return false;
+    }
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        await _showLocationPromptDialog(
+          title: 'Location Permission Denied',
+          content:
+              'Location permission is permanently denied. Enable it in app settings, or keep the saved incident pin.',
+          onConfirm: Geolocator.openAppSettings,
+        );
+      }
+      return false;
+    }
+
+    if (mounted && !_locationPermissionGranted) {
+      setState(() => _locationPermissionGranted = true);
+    }
+    return true;
+  }
+
+  Future<void> _showLocationPromptDialog({
+    required String title,
+    required String content,
+    required Future<bool> Function() onConfirm,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        content: Text(content, style: const TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              'Keep Saved Pin',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3A8A),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await onConfirm();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _updatePinnedLocation(LatLng target, {bool fromDevice = false}) {
@@ -760,507 +809,509 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return EdgeSwipeBack(
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF0F172A),
-            size: 18,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F172A),
+              size: 18,
+            ),
+            onPressed: () => Navigator.pop(context),
           ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Edit Report',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
+          title: const Text(
+            'Edit Report',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1.0),
+            child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
           ),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
-        ),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // Status and Ticket Summary Banner
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEF3C7),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.pending_actions_rounded,
-                    color: Color(0xFFB45309),
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ticket ID: ${widget.report.ticketId}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Color(0xFF78350F),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'PENDING REVIEW · Editable State',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFB45309),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // SECTION 1: VISIBLE LOCKED INFORMATION (READ ONLY)
-            const Text(
-              'LOCKED INFORMATION (VIEW ONLY)',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF94A3B8),
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            TextFormField(
-              controller: _reporterName,
-              readOnly: true,
-              decoration: _inputDecoration(
-                'Reporter Full Name',
-                prefixIcon: Icons.person_outline,
-                isLocked: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: _reporterPhone,
-                    readOnly: true,
-                    decoration: _inputDecoration(
-                      'Phone Number',
-                      prefixIcon: Icons.phone_outlined,
-                      isLocked: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextFormField(
-                    controller: _reporterEmail,
-                    readOnly: true,
-                    decoration: _inputDecoration(
-                      'Email Address',
-                      prefixIcon: Icons.email_outlined,
-                      isLocked: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            TextFormField(
-              controller: _category,
-              readOnly: true,
-              decoration: _inputDecoration(
-                'Incident Category',
-                prefixIcon: Icons.category_outlined,
-                isLocked: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            TextFormField(
-              controller: _incidentDateTime,
-              readOnly: true,
-              decoration: _inputDecoration(
-                'Incident Time & Date',
-                prefixIcon: Icons.event_outlined,
-                isLocked: true,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Divider(color: Color(0xFFE2E8F0), height: 1),
-            const SizedBox(height: 24),
-
-            // SECTION 2: EDITABLE INCIDENT DETAILS
-            const Text(
-              'EDITABLE INCIDENT DETAILS',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            TextFormField(
-              controller: _description,
-              maxLines: 4,
-              decoration: _inputDecoration(
-                'What happened*',
-                prefixIcon: Icons.description_outlined,
-              ),
-              validator: (value) => value != null && value.trim().length >= 10
-                  ? null
-                  : 'Please provide at least 10 characters',
-            ),
-            const SizedBox(height: 20),
-
-            // Map Location Pin Picker (same Google Maps UI as submit report)
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFCBD5E1)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(
-                              Icons.pin_drop_rounded,
-                              color: Color(0xFF1E3A8A),
-                              size: 18,
-                            ),
-                            SizedBox(width: 6),
-                            Text(
-                              'MAP LOCATION PIN',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton(
-                          onPressed: _openMapLocationPicker,
-                          child: const Text(
-                            'Expand Map',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E3A8A),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: 200,
-                    child: ClipRRect(
-                      child: GoogleMap(
-                        initialCameraPosition: CameraPosition(
-                          target: _selectedLatLng,
-                          zoom: 15,
-                        ),
-                        onMapCreated: (controller) {
-                          _mapController = controller;
-                        },
-                        onTap: _updatePinnedLocation,
-                        markers: {
-                          Marker(
-                            markerId: const MarkerId(
-                              'edit-incident-preview-pin',
-                            ),
-                            position: _selectedLatLng,
-                          ),
-                        },
-                        compassEnabled: false,
-                        zoomControlsEnabled: false,
-                        myLocationEnabled: false,
-                        myLocationButtonEnabled: false,
-                        mapToolbarEnabled: false,
-                        buildingsEnabled: true,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    color: const Color(0xFFF8FAFC),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _locationFromDevice
-                              ? Icons.my_location_rounded
-                              : Icons.location_on_rounded,
-                          size: 18,
-                          color: const Color(0xFF15803D),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _locating
-                                ? 'Finding your current location…'
-                                : _locationFromDevice
-                                ? 'Pinned to your current device location.'
-                                : 'Tap the map to adjust the saved incident pin.',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _locating ? null : _detectLocation,
-                          child: const Text('Use GPS'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _location,
-              decoration: _inputDecoration(
-                'Location Name / Landmark*',
-                prefixIcon: Icons.location_city_outlined,
-              ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _address,
-              maxLines: 2,
-              decoration: _inputDecoration(
-                'Street Address*',
-                prefixIcon: Icons.place_outlined,
-              ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 24),
-
-            // SECTION 3: ATTACHED EVIDENCE PREVIEW & UPLOAD
-            const Text(
-              'Attached Evidence',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Tap the eye icon to preview attached files or delete to replace.',
-              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 12),
-
-            if (_existingMediaPaths.isEmpty)
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              // Status and Ticket Summary Banner
               Container(
-                width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
                 ),
-                child: const Text(
-                  'No initial evidence attached.',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                ),
-              )
-            else
-              Column(
-                children: List.generate(_existingMediaPaths.length, (index) {
-                  final rawPath = _existingMediaPaths[index];
-                  final fileName = rawPath.split('/').last;
-                  final extension = fileName.split('.').last.toLowerCase();
-                  final isVideo = const {
-                    'mp4',
-                    'mov',
-                    'avi',
-                    'mkv',
-                    'webm',
-                  }.contains(extension);
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.pending_actions_rounded,
+                      color: Color(0xFFB45309),
+                      size: 24,
                     ),
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(
-                        isVideo
-                            ? Icons.video_library_outlined
-                            : Icons.image_outlined,
-                        color: isVideo
-                            ? const Color(0xFF15803D)
-                            : const Color(0xFF1E3A8A),
-                      ),
-                      title: Text(
-                        fileName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            icon: const Icon(
-                              Icons.visibility_outlined,
-                              color: Color(0xFF0284C7),
-                              size: 18,
+                          Text(
+                            'Ticket ID: ${widget.report.ticketId}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF78350F),
                             ),
-                            tooltip: 'Preview Evidence',
-                            onPressed: () => _previewMedia(rawPath),
                           ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline_rounded,
-                              color: Color(0xFFDC2626),
-                              size: 18,
+                          const SizedBox(height: 2),
+                          const Text(
+                            'PENDING REVIEW · Editable State',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFB45309),
                             ),
-                            tooltip: 'Remove File',
-                            onPressed: () => _removeExistingMedia(index),
                           ),
                         ],
                       ),
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // SECTION 1: VISIBLE LOCKED INFORMATION (READ ONLY)
+              const Text(
+                'LOCKED INFORMATION (VIEW ONLY)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF94A3B8),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _reporterName,
+                readOnly: true,
+                decoration: _inputDecoration(
+                  'Reporter Full Name',
+                  prefixIcon: Icons.person_outline,
+                  isLocked: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _reporterPhone,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        'Phone Number',
+                        prefixIcon: Icons.phone_outlined,
+                        isLocked: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _reporterEmail,
+                      readOnly: true,
+                      decoration: _inputDecoration(
+                        'Email Address',
+                        prefixIcon: Icons.email_outlined,
+                        isLocked: true,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _category,
+                readOnly: true,
+                decoration: _inputDecoration(
+                  'Incident Category',
+                  prefixIcon: Icons.category_outlined,
+                  isLocked: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              TextFormField(
+                controller: _incidentDateTime,
+                readOnly: true,
+                decoration: _inputDecoration(
+                  'Incident Time & Date',
+                  prefixIcon: Icons.event_outlined,
+                  isLocked: true,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+              const Divider(color: Color(0xFFE2E8F0), height: 1),
+              const SizedBox(height: 24),
+
+              // SECTION 2: EDITABLE INCIDENT DETAILS
+              const Text(
+                'EDITABLE INCIDENT DETAILS',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A8A),
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                controller: _description,
+                maxLines: 4,
+                decoration: _inputDecoration(
+                  'What happened*',
+                  prefixIcon: Icons.description_outlined,
+                ),
+                validator: (value) => value != null && value.trim().length >= 10
+                    ? null
+                    : 'Please provide at least 10 characters',
+              ),
+              const SizedBox(height: 20),
+
+              // Map Location Pin Picker (same Google Maps UI as submit report)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.pin_drop_rounded,
+                                color: Color(0xFF1E3A8A),
+                                size: 18,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'MAP LOCATION PIN',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
+                          ),
+                          TextButton(
+                            onPressed: _openMapLocationPicker,
+                            child: const Text(
+                              'Expand Map',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      height: 200,
+                      child: ClipRRect(
+                        child: GoogleMap(
+                          initialCameraPosition: CameraPosition(
+                            target: _selectedLatLng,
+                            zoom: 15,
+                          ),
+                          onMapCreated: (controller) {
+                            _mapController = controller;
+                          },
+                          onTap: _updatePinnedLocation,
+                          markers: {
+                            Marker(
+                              markerId: const MarkerId(
+                                'edit-incident-preview-pin',
+                              ),
+                              position: _selectedLatLng,
+                            ),
+                          },
+                          compassEnabled: false,
+                          zoomControlsEnabled: false,
+                          myLocationEnabled: _locationPermissionGranted,
+                          myLocationButtonEnabled: false,
+                          mapToolbarEnabled: false,
+                          buildingsEnabled: true,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      color: const Color(0xFFF8FAFC),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _locationFromDevice
+                                ? Icons.my_location_rounded
+                                : Icons.location_on_rounded,
+                            size: 18,
+                            color: const Color(0xFF15803D),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _locating
+                                  ? 'Finding your current location…'
+                                  : _locationFromDevice
+                                  ? 'Pinned to your current device location.'
+                                  : 'Tap the map to adjust the saved incident pin.',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _locating ? null : _detectLocation,
+                            child: const Text('Use GPS'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _location,
+                decoration: _inputDecoration(
+                  'Location Name / Landmark*',
+                  prefixIcon: Icons.location_city_outlined,
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _address,
+                maxLines: 2,
+                decoration: _inputDecoration(
+                  'Street Address*',
+                  prefixIcon: Icons.place_outlined,
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 24),
+
+              // SECTION 3: ATTACHED EVIDENCE PREVIEW & UPLOAD
+              const Text(
+                'Attached Evidence',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Tap the eye icon to preview attached files or delete to replace.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 12),
+
+              if (_existingMediaPaths.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Text(
+                    'No initial evidence attached.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                  ),
+                )
+              else
+                Column(
+                  children: List.generate(_existingMediaPaths.length, (index) {
+                    final rawPath = _existingMediaPaths[index];
+                    final fileName = rawPath.split('/').last;
+                    final extension = fileName.split('.').last.toLowerCase();
+                    final isVideo = const {
+                      'mp4',
+                      'mov',
+                      'avi',
+                      'mkv',
+                      'webm',
+                    }.contains(extension);
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isVideo
+                              ? Icons.video_library_outlined
+                              : Icons.image_outlined,
+                          color: isVideo
+                              ? const Color(0xFF15803D)
+                              : const Color(0xFF1E3A8A),
+                        ),
+                        title: Text(
+                          fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.visibility_outlined,
+                                color: Color(0xFF0284C7),
+                                size: 18,
+                              ),
+                              tooltip: 'Preview Evidence',
+                              onPressed: () => _previewMedia(rawPath),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Color(0xFFDC2626),
+                                size: 18,
+                              ),
+                              tooltip: 'Remove File',
+                              onPressed: () => _removeExistingMedia(index),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              const SizedBox(height: 12),
+
+              // Append New Supporting Media Button
+              OutlinedButton.icon(
+                onPressed: _addFiles,
+                icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                label: const Text('Append New Media (Photos / Videos)'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1E3A8A),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: const BorderSide(color: Color(0xFF1E3A8A)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+
+              if (_newFiles.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ...List.generate(_newFiles.length, (index) {
+                  final file = _newFiles[index];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(
+                        Icons.attachment_rounded,
+                        color: Color(0xFF15803D),
+                      ),
+                      title: Text(
+                        file.name,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF15803D),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          color: Color(0xFF15803D),
+                          size: 16,
+                        ),
+                        onPressed: () => _removeNewFile(index),
+                      ),
+                    ),
                   );
                 }),
-              ),
-            const SizedBox(height: 12),
+              ],
 
-            // Append New Supporting Media Button
-            OutlinedButton.icon(
-              onPressed: _addFiles,
-              icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-              label: const Text('Append New Media (Photos / Videos)'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF1E3A8A),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: Color(0xFF1E3A8A)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 28),
+
+              // Save Changes Submit Button
+              ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A8A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
+                child: _saving
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Save Changes',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
-            ),
-
-            if (_newFiles.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ...List.generate(_newFiles.length, (index) {
-                final file = _newFiles[index];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFBBF7D0)),
-                  ),
-                  child: ListTile(
-                    dense: true,
-                    leading: const Icon(
-                      Icons.attachment_rounded,
-                      color: Color(0xFF15803D),
-                    ),
-                    title: Text(
-                      file.name,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF15803D),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(
-                        Icons.close,
-                        color: Color(0xFF15803D),
-                        size: 16,
-                      ),
-                      onPressed: () => _removeNewFile(index),
-                    ),
-                  ),
-                );
-              }),
             ],
-
-            const SizedBox(height: 28),
-
-            // Save Changes Submit Button
-            ElevatedButton(
-              onPressed: _saving ? null : _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A8A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: _saving
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Text(
-                      'Save Changes',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-            ),
-          ],
+          ),
         ),
       ),
     );

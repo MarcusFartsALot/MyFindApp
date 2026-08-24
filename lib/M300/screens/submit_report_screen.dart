@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../M400/models/profile_model.dart';
 import '../../core/exceptions/app_exceptions.dart';
 import '../services/community_report_service.dart';
+import '../widgets/edge_swipe_back.dart';
 
 class SubmitReportScreen extends StatefulWidget {
   final ProfileModel profile;
@@ -1233,464 +1234,470 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text(
-          'Submit Incident Report',
-          style: TextStyle(
-            color: Color(0xFF0F172A),
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
+    return EdgeSwipeBack(
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          if (widget.onLogout != null)
-            IconButton(
-              onPressed: widget.onLogout,
-              icon: const Icon(Icons.logout, color: Color(0xFF0F172A)),
-              tooltip: 'Log Out',
+        appBar: AppBar(
+          title: const Text(
+            'Submit Incident Report',
+            style: TextStyle(
+              color: Color(0xFF0F172A),
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
             ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: Stepper(
-          physics: const BouncingScrollPhysics(),
-          type: StepperType.vertical,
-          currentStep: _currentStep,
-          onStepTapped: (step) => setState(() => _currentStep = step),
-          onStepContinue: () {
-            if (_currentStep < 2) {
-              setState(() => _currentStep += 1);
-            }
-          },
-          onStepCancel: () {
-            if (_currentStep > 0) {
-              setState(() => _currentStep -= 1);
-            }
-          },
-          controlsBuilder: (context, details) {
-            if (_currentStep == 2) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.only(top: 20.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1E3A8A),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: details.onStepContinue,
-                      child: const Text(
-                        'Continue',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (_currentStep != 0) ...[
-                    const SizedBox(width: 12),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 1,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F172A),
+              size: 18,
+            ),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          actions: [
+            if (widget.onLogout != null)
+              IconButton(
+                onPressed: widget.onLogout,
+                icon: const Icon(Icons.logout, color: Color(0xFF0F172A)),
+                tooltip: 'Log Out',
+              ),
+          ],
+        ),
+        body: Form(
+          key: _formKey,
+          child: Stepper(
+            physics: const BouncingScrollPhysics(),
+            type: StepperType.vertical,
+            currentStep: _currentStep,
+            onStepTapped: (step) => setState(() => _currentStep = step),
+            onStepContinue: () {
+              if (_currentStep < 2) {
+                setState(() => _currentStep += 1);
+              }
+            },
+            onStepCancel: () {
+              if (_currentStep > 0) {
+                setState(() => _currentStep -= 1);
+              }
+            },
+            controlsBuilder: (context, details) {
+              if (_currentStep == 2) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 20.0),
+                child: Row(
+                  children: [
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: details.onStepCancel,
-                        style: OutlinedButton.styleFrom(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A8A),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
+                        onPressed: details.onStepContinue,
                         child: const Text(
-                          'Back',
-                          style: TextStyle(color: Color(0xFF0F172A)),
+                          'Continue',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
+                    if (_currentStep != 0) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: details.onStepCancel,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text(
+                            'Back',
+                            style: TextStyle(color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            );
-          },
-          steps: [
-            // STEP 1: Reporter Contact Details
-            Step(
-              title: const Text(
-                'Reporter Contact Details',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              isActive: _currentStep >= 0,
-              content: Padding(
-                // A populated read-only field floats its label above the
-                // outline. Keep it clear of the Stepper content boundary.
-                padding: const EdgeInsets.only(top: 10),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: TextFormField(
-                        controller: _name,
-                        readOnly: true,
-                        decoration: _fieldDecoration(
-                          label: 'Full Name*',
-                          icon: Icons.person_outline_rounded,
+                ),
+              );
+            },
+            steps: [
+              // STEP 1: Reporter Contact Details
+              Step(
+                title: const Text(
+                  'Reporter Contact Details',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                isActive: _currentStep >= 0,
+                content: Padding(
+                  // A populated read-only field floats its label above the
+                  // outline. Keep it clear of the Stepper content boundary.
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: TextFormField(
+                          controller: _name,
                           readOnly: true,
+                          decoration: _fieldDecoration(
+                            label: 'Full Name*',
+                            icon: Icons.person_outline_rounded,
+                            readOnly: true,
+                          ),
                         ),
                       ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: TextFormField(
+                          controller: _phone,
+                          keyboardType: TextInputType.phone,
+                          decoration: _fieldDecoration(
+                            label: 'Phone Number*',
+                            hint: 'e.g. 012 345 6789',
+                            icon: Icons.phone_outlined,
+                          ),
+                          validator: (v) => v == null || v.trim().length < 5
+                              ? 'Enter valid phone number'
+                              : null,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: TextFormField(
+                          controller: _email,
+                          readOnly: true,
+                          decoration: _fieldDecoration(
+                            label: 'Email Address*',
+                            icon: Icons.email_outlined,
+                            readOnly: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // STEP 2: Incident Details
+              Step(
+                title: const Text(
+                  'Incident Details',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                isActive: _currentStep >= 1,
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSelectionBox(
+                      'Incident Category*',
+                      _categories,
+                      _category,
+                      (val) => setState(() => _category = val),
                     ),
+
+                    if (_category == 'Other')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: TextFormField(
+                          controller: _otherCategory,
+                          maxLength: 100,
+                          decoration: _fieldDecoration(
+                            label: 'Specify Incident Category*',
+                            hint: 'e.g. Illegal business operations',
+                            icon: Icons.category_outlined,
+                          ),
+                          validator: (v) =>
+                              _category == 'Other' &&
+                                  (v == null || v.trim().length < 2)
+                              ? 'Please specify category'
+                              : null,
+                        ),
+                      ),
+
+                    _buildSelectionBox(
+                      'Urgency Level*',
+                      _urgencyLevels,
+                      _urgencyLevel,
+                      (val) => setState(() => _urgencyLevel = val),
+                    ),
+
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12.0),
                       child: TextFormField(
-                        controller: _phone,
-                        keyboardType: TextInputType.phone,
+                        controller: _location,
                         decoration: _fieldDecoration(
-                          label: 'Phone Number*',
-                          hint: 'e.g. 012 345 6789',
-                          icon: Icons.phone_outlined,
+                          label: 'Location / Landmark*',
+                          hint: 'e.g. Central Market Plaza',
+                          icon: Icons.location_city_outlined,
                         ),
-                        validator: (v) => v == null || v.trim().length < 5
-                            ? 'Enter valid phone number'
+                        validator: (v) => v == null || v.trim().length < 2
+                            ? 'Required (min 2 chars)'
                             : null,
                       ),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12.0),
                       child: TextFormField(
-                        controller: _email,
-                        readOnly: true,
+                        controller: _address,
+                        maxLines: 2,
                         decoration: _fieldDecoration(
-                          label: 'Email Address*',
-                          icon: Icons.email_outlined,
-                          readOnly: true,
+                          label: 'Full Address*',
+                          hint: 'Building, street, district and state',
+                          icon: Icons.home_outlined,
+                        ),
+                        validator: (v) => v == null || v.trim().length < 5
+                            ? 'Required (min 5 chars)'
+                            : null,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickDate,
+                            icon: const Icon(
+                              Icons.calendar_month_rounded,
+                              color: Color(0xFF1E3A8A),
+                              size: 18,
+                            ),
+                            label: Text(
+                              '${_incidentDate.day}/${_incidentDate.month}/${_incidentDate.year}',
+                              style: const TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickTime,
+                            icon: const Icon(
+                              Icons.schedule_rounded,
+                              color: Color(0xFF1E3A8A),
+                              size: 18,
+                            ),
+                            label: Text(
+                              _incidentTime.format(context),
+                              style: const TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _description,
+                      maxLines: 4,
+                      decoration: _fieldDecoration(
+                        label: 'What Happened*',
+                        hint: 'Describe the violation or incident in detail…',
+                        icon: Icons.notes_rounded,
+                      ),
+                      validator: (value) =>
+                          value != null && value.trim().length >= 10
+                          ? null
+                          : 'Please provide at least 10 characters',
+                    ),
+                  ],
+                ),
+              ),
+
+              // STEP 3: Map Pin & Evidence
+              Step(
+                title: const Text(
+                  'Location Pin & Evidence',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                isActive: _currentStep >= 2,
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.pin_drop_rounded,
+                                      color: Color(0xFF1E3A8A),
+                                      size: 18,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'MAP LOCATION PIN',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                TextButton(
+                                  onPressed: _openMapLocationPicker,
+                                  child: const Text(
+                                    'Expand Map',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E3A8A),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(
+                            height: 200,
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                bottom: Radius.circular(0),
+                              ),
+                              child: GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: _selectedLatLng,
+                                  zoom: 15,
+                                ),
+                                onMapCreated: (controller) {
+                                  _mapController = controller;
+                                },
+                                onTap: (point) => _updatePinnedLocation(point),
+                                markers: _hasLocationPin
+                                    ? {
+                                        Marker(
+                                          markerId: const MarkerId(
+                                            'incident-preview-pin',
+                                          ),
+                                          position: _selectedLatLng,
+                                        ),
+                                      }
+                                    : const <Marker>{},
+                                compassEnabled: false,
+                                zoomControlsEnabled: false,
+                                myLocationEnabled: false,
+                                myLocationButtonEnabled: false,
+                                mapToolbarEnabled: false,
+                                buildingsEnabled: true,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            color: const Color(0xFFF8FAFC),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _hasLocationPin
+                                      ? (_locationFromDevice
+                                            ? Icons.my_location_rounded
+                                            : Icons.location_on_rounded)
+                                      : Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: _hasLocationPin
+                                      ? const Color(0xFF15803D)
+                                      : const Color(0xFFB45309),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _locating
+                                        ? 'Finding your current location…'
+                                        : _hasLocationPin
+                                        ? (_locationFromDevice
+                                              ? 'Pinned to your current device location.'
+                                              : 'Manual location pin selected.')
+                                        : 'Tap the map to place the incident pin.',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _locating ? null : _detectLocation,
+                                  child: const Text('Use GPS'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Evidence Upload
+                    _buildEvidenceUploadButtons(),
+
+                    // Media Preview
+                    _buildAttachedMediaPreview(),
+
+                    const SizedBox(height: 28),
+
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A8A),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: _submitting ? null : _submit,
+                        icon: _submitting
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.send_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                        label: Text(
+                          _submitting
+                              ? 'Submitting Report...'
+                              : 'Submit Incident Report',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-
-            // STEP 2: Incident Details
-            Step(
-              title: const Text(
-                'Incident Details',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              isActive: _currentStep >= 1,
-              content: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSelectionBox(
-                    'Incident Category*',
-                    _categories,
-                    _category,
-                    (val) => setState(() => _category = val),
-                  ),
-
-                  if (_category == 'Other')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: TextFormField(
-                        controller: _otherCategory,
-                        maxLength: 100,
-                        decoration: _fieldDecoration(
-                          label: 'Specify Incident Category*',
-                          hint: 'e.g. Illegal business operations',
-                          icon: Icons.category_outlined,
-                        ),
-                        validator: (v) =>
-                            _category == 'Other' &&
-                                (v == null || v.trim().length < 2)
-                            ? 'Please specify category'
-                            : null,
-                      ),
-                    ),
-
-                  _buildSelectionBox(
-                    'Urgency Level*',
-                    _urgencyLevels,
-                    _urgencyLevel,
-                    (val) => setState(() => _urgencyLevel = val),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: TextFormField(
-                      controller: _location,
-                      decoration: _fieldDecoration(
-                        label: 'Location / Landmark*',
-                        hint: 'e.g. Central Market Plaza',
-                        icon: Icons.location_city_outlined,
-                      ),
-                      validator: (v) => v == null || v.trim().length < 2
-                          ? 'Required (min 2 chars)'
-                          : null,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: TextFormField(
-                      controller: _address,
-                      maxLines: 2,
-                      decoration: _fieldDecoration(
-                        label: 'Full Address*',
-                        hint: 'Building, street, district and state',
-                        icon: Icons.home_outlined,
-                      ),
-                      validator: (v) => v == null || v.trim().length < 5
-                          ? 'Required (min 5 chars)'
-                          : null,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _pickDate,
-                          icon: const Icon(
-                            Icons.calendar_month_rounded,
-                            color: Color(0xFF1E3A8A),
-                            size: 18,
-                          ),
-                          label: Text(
-                            '${_incidentDate.day}/${_incidentDate.month}/${_incidentDate.year}',
-                            style: const TextStyle(
-                              color: Color(0xFF0F172A),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _pickTime,
-                          icon: const Icon(
-                            Icons.schedule_rounded,
-                            color: Color(0xFF1E3A8A),
-                            size: 18,
-                          ),
-                          label: Text(
-                            _incidentTime.format(context),
-                            style: const TextStyle(
-                              color: Color(0xFF0F172A),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _description,
-                    maxLines: 4,
-                    decoration: _fieldDecoration(
-                      label: 'What Happened*',
-                      hint: 'Describe the violation or incident in detail…',
-                      icon: Icons.notes_rounded,
-                    ),
-                    validator: (value) =>
-                        value != null && value.trim().length >= 10
-                        ? null
-                        : 'Please provide at least 10 characters',
-                  ),
-                ],
-              ),
-            ),
-
-            // STEP 3: Map Pin & Evidence
-            Step(
-              title: const Text(
-                'Location Pin & Evidence',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              isActive: _currentStep >= 2,
-              content: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(
-                                    Icons.pin_drop_rounded,
-                                    color: Color(0xFF1E3A8A),
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'MAP LOCATION PIN',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              TextButton(
-                                onPressed: _openMapLocationPicker,
-                                child: const Text(
-                                  'Expand Map',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E3A8A),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          height: 200,
-                          child: ClipRRect(
-                            borderRadius: const BorderRadius.vertical(
-                              bottom: Radius.circular(0),
-                            ),
-                            child: GoogleMap(
-                              initialCameraPosition: CameraPosition(
-                                target: _selectedLatLng,
-                                zoom: 15,
-                              ),
-                              onMapCreated: (controller) {
-                                _mapController = controller;
-                              },
-                              onTap: (point) => _updatePinnedLocation(point),
-                              markers: _hasLocationPin
-                                  ? {
-                                      Marker(
-                                        markerId: const MarkerId(
-                                          'incident-preview-pin',
-                                        ),
-                                        position: _selectedLatLng,
-                                      ),
-                                    }
-                                  : const <Marker>{},
-                              compassEnabled: false,
-                              zoomControlsEnabled: false,
-                              myLocationEnabled: false,
-                              myLocationButtonEnabled: false,
-                              mapToolbarEnabled: false,
-                              buildingsEnabled: true,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          color: const Color(0xFFF8FAFC),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _hasLocationPin
-                                    ? (_locationFromDevice
-                                          ? Icons.my_location_rounded
-                                          : Icons.location_on_rounded)
-                                    : Icons.info_outline_rounded,
-                                size: 18,
-                                color: _hasLocationPin
-                                    ? const Color(0xFF15803D)
-                                    : const Color(0xFFB45309),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _locating
-                                      ? 'Finding your current location…'
-                                      : _hasLocationPin
-                                      ? (_locationFromDevice
-                                            ? 'Pinned to your current device location.'
-                                            : 'Manual location pin selected.')
-                                      : 'Tap the map to place the incident pin.',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF475569),
-                                  ),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: _locating ? null : _detectLocation,
-                                child: const Text('Use GPS'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Evidence Upload
-                  _buildEvidenceUploadButtons(),
-
-                  // Media Preview
-                  _buildAttachedMediaPreview(),
-
-                  const SizedBox(height: 28),
-
-                  // Submit Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1E3A8A),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      onPressed: _submitting ? null : _submit,
-                      icon: _submitting
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                      label: Text(
-                        _submitting
-                            ? 'Submitting Report...'
-                            : 'Submit Incident Report',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

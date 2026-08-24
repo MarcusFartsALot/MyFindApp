@@ -27,7 +27,8 @@ class MeScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF8FAFC),
       body: ListView(
         physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics()),
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
         padding: const EdgeInsets.all(20.0),
         children: [
           // User Profile Header Card
@@ -39,7 +40,7 @@ class MeScreen extends StatelessWidget {
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
+                  color: Colors.black.withValues(alpha: 0.02),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -53,7 +54,10 @@ class MeScreen extends StatelessWidget {
                   backgroundImage: _getAvatarImage(),
                   child: _getAvatarImage() == null
                       ? const Icon(
-                      Icons.person, size: 36, color: Color(0xFF94A3B8))
+                          Icons.person,
+                          size: 36,
+                          color: Color(0xFF94A3B8),
+                        )
                       : null,
                 ),
                 const SizedBox(width: 16),
@@ -75,8 +79,10 @@ class MeScreen extends StatelessWidget {
                       Row(
                         children: [
                           const Icon(
-                              Icons.badge_outlined, size: 14, color: Color(
-                              0xFF64748B)),
+                            Icons.badge_outlined,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Nickname: $nickname',
@@ -105,16 +111,20 @@ class MeScreen extends StatelessWidget {
             ),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 4),
+                horizontal: 16,
+                vertical: 4,
+              ),
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A8A).withOpacity(0.1),
+                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
-                    Icons.settings_outlined, color: Color(0xFF1E3A8A),
-                    size: 22),
+                  Icons.settings_outlined,
+                  color: Color(0xFF1E3A8A),
+                  size: 22,
+                ),
               ),
               title: const Text(
                 'Settings',
@@ -129,15 +139,16 @@ class MeScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
               trailing: const Icon(
-                  Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+                Icons.chevron_right_rounded,
+                color: Color(0xFF94A3B8),
+              ),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) =>
-                        SettingsScreen(
-                          profile: profile,
-                          onProfileUpdated: onProfileUpdated,
-                        ),
+                    builder: (_) => SettingsScreen(
+                      profile: profile,
+                      onProfileUpdated: onProfileUpdated,
+                    ),
                   ),
                 );
               },

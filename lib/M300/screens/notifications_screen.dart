@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../M400/models/profile_model.dart';
+import '../widgets/edge_swipe_back.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final ProfileModel profile;
@@ -135,80 +136,90 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .where((notification) => notification['is_read'] == false)
         .length;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          title: const Text(
-            'Notifications & Activity',
-            style: TextStyle(
-              color: Color(0xFF0F172A),
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
+    return EdgeSwipeBack(
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          appBar: AppBar(
+            title: const Text(
+              'Notifications & Activity',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            backgroundColor: Colors.white,
+            elevation: 1,
+            leading: IconButton(
+              icon: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Color(0xFF0F172A),
+                size: 18,
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
+            bottom: TabBar(
+              labelColor: const Color(0xFF1E3A8A),
+              unselectedLabelColor: const Color(0xFF64748B),
+              indicatorColor: const Color(0xFF1E3A8A),
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.notifications_active_outlined, size: 18),
+                      const SizedBox(width: 6),
+                      Text('Notifications ($unreadAlerts)'),
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.history_rounded, size: 18),
+                      const SizedBox(width: 6),
+                      Text('Activities ($unreadActivities)'),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          backgroundColor: Colors.white,
-          elevation: 1,
-          iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
-          bottom: TabBar(
-            labelColor: const Color(0xFF1E3A8A),
-            unselectedLabelColor: const Color(0xFF64748B),
-            indicatorColor: const Color(0xFF1E3A8A),
-            indicatorWeight: 3,
-            labelStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
-            tabs: [
-              Tab(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+          body: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+                )
+              : TabBarView(
+                  physics: const BouncingScrollPhysics(),
                   children: [
-                    const Icon(Icons.notifications_active_outlined, size: 18),
-                    const SizedBox(width: 6),
-                    Text('Notifications ($unreadAlerts)'),
+                    _buildNotificationListView(
+                      items: adminAlerts,
+                      emptyTitle: 'No Notifications',
+                      emptySubtitle:
+                          'Important report approvals and official admin updates will appear here.',
+                      emptyIcon: Icons.notifications_off_outlined,
+                      isAlertCategory: true,
+                    ),
+                    _buildNotificationListView(
+                      items: activities,
+                      emptyTitle: 'No Recent Activities',
+                      emptySubtitle:
+                          'Your activity history (profile updates, password changes, and report submissions) will be logged here.',
+                      emptyIcon: Icons.assignment_outlined,
+                      isAlertCategory: false,
+                    ),
                   ],
                 ),
-              ),
-              Tab(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.history_rounded, size: 18),
-                    const SizedBox(width: 6),
-                    Text('Activities ($unreadActivities)'),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ),
-        body: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
-              )
-            : TabBarView(
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  _buildNotificationListView(
-                    items: adminAlerts,
-                    emptyTitle: 'No Notifications',
-                    emptySubtitle:
-                        'Important report approvals and official admin updates will appear here.',
-                    emptyIcon: Icons.notifications_off_outlined,
-                    isAlertCategory: true,
-                  ),
-                  _buildNotificationListView(
-                    items: activities,
-                    emptyTitle: 'No Recent Activities',
-                    emptySubtitle:
-                        'Your activity history (profile updates, password changes, and report submissions) will be logged here.',
-                    emptyIcon: Icons.assignment_outlined,
-                    isAlertCategory: false,
-                  ),
-                ],
-              ),
       ),
     );
   }
@@ -284,9 +295,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isRead
-                    ? Colors.white
-                    : const Color(0xFFEFF6FF),
+                color: isRead ? Colors.white : const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: isRead

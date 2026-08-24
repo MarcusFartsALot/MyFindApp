@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:my_find/M400/models/profile_model.dart';
 import 'package:my_find/M300/services/community_report_service.dart';
 import 'package:my_find/M300/models/incident_report_model.dart';
+import 'package:my_find/M300/widgets/edge_swipe_back.dart';
 
 class ReportHistoryScreen extends StatefulWidget {
   final ProfileModel profile;
@@ -136,55 +137,59 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF0F172A),
-            size: 18,
+    return EdgeSwipeBack(
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F172A),
+              size: 18,
+            ),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Report History',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-            color: Color(0xFF0F172A),
+          title: const Text(
+            'Report History',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          centerTitle: true,
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1.0),
+            child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
           ),
         ),
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1.0),
-          child: Container(color: const Color(0xFFE2E8F0), height: 1.0),
-        ),
-      ),
-      body: RefreshIndicator(
-        color: const Color(0xFF1E3A8A),
-        onRefresh: _fetchReports,
-        child: _isLoading
-            ? const SingleChildScrollView(
-                physics: AlwaysScrollableScrollPhysics(),
-                child: SizedBox(
-                  height: 400,
-                  child: Center(
-                    child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+        body: RefreshIndicator(
+          color: const Color(0xFF1E3A8A),
+          onRefresh: _fetchReports,
+          child: _isLoading
+              ? const SingleChildScrollView(
+                  physics: AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: 400,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF1E3A8A),
+                      ),
+                    ),
                   ),
-                ),
-              )
-            : _reports.isEmpty
-            ? SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: SizedBox(
-                  height: MediaQuery.of(context).size.height - 120,
-                  child: _buildEmptyState(),
-                ),
-              )
-            : _buildReportList(),
+                )
+              : _reports.isEmpty
+              ? SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: MediaQuery.of(context).size.height - 120,
+                    child: _buildEmptyState(),
+                  ),
+                )
+              : _buildReportList(),
+        ),
       ),
     );
   }

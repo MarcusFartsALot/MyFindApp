@@ -1,8 +1,25 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val mapsPropertiesFile = rootProject.file("maps.properties")
+val mapsProperties = Properties().apply {
+    if (mapsPropertiesFile.exists()) {
+        FileInputStream(mapsPropertiesFile).use { load(it) }
+    }
+}
+
+val teamSigningFile = rootProject.file("team-signing.properties")
+val teamSigningProperties = Properties().apply {
+    if (teamSigningFile.exists()) {
+        FileInputStream(teamSigningFile).use { load(it) }
+    }
 }
 
 android {
@@ -29,9 +46,29 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] =
+            mapsProperties.getProperty("MAPS_API_KEY", "")
+    }
+
+    signingConfigs {
+        create("teamDebug") {
+            if (teamSigningFile.exists()) {
+                storeFile = rootProject.file(
+                    teamSigningProperties.getProperty("storeFile"),
+                )
+                storePassword = teamSigningProperties.getProperty("storePassword")
+                keyAlias = teamSigningProperties.getProperty("keyAlias")
+                keyPassword = teamSigningProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (teamSigningFile.exists()) {
+                signingConfig = signingConfigs.getByName("teamDebug")
+            }
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.

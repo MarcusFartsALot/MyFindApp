@@ -1,0 +1,2 @@
+# Copy this file to maps.properties and insert the Android-restricted key.
+MAPS_API_KEY=YOUR_ANDROID_MAPS_API_KEY

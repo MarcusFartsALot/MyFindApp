@@ -580,8 +580,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                           );
                                         }
 
-                                        if (mounted) {
+                                        if (dialogContext.mounted) {
                                           Navigator.of(dialogContext).pop();
+                                        }
+                                        if (mounted) {
                                           _showSnackBar(
                                             "Your password has been changed successfully.",
                                           );
@@ -589,8 +591,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                       } on AuthException catch (error) {
                                         setModalState(() {
                                           isUpdatingPwd = false;
-                                          currentPasswordError = error.message
-                                                  .contains('expired')
+                                          currentPasswordError =
+                                              error.message.contains('expired')
                                               ? error.message
                                               : 'This password does not match your signed-in Supabase account.';
                                         });
@@ -683,7 +685,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       ),
                     );
                   },
-                  errorBuilder: (_, __, ___) => const Padding(
+                  errorBuilder: (_, _, _) => const Padding(
                     padding: EdgeInsets.all(32.0),
                     child: Center(
                       child: Text(
@@ -802,7 +804,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 height: 150,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   height: 120,
                   color: const Color(0xFFF1F5F9),
                   alignment: Alignment.center,

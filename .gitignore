@@ -46,3 +46,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local Android Maps and shared development-signing configuration.
+# Share these privately with teammates; never commit them.
+/android/maps.properties
+/android/team-signing.properties
+/android/keystores/
