@@ -28,6 +28,13 @@ $registrationPending = 0;
 $citizenValidated = 0;
 $citizenRejectedReports = 0;
 
+// ============================================================
+// Top 5 Risk Areas & Emergency Alerts Data
+// ============================================================
+$top5RiskAreas = [];
+$emergencyReports = [];
+$emergencyCount = 0;
+
 try {
     // Get SupabaseClient
     $client = new SupabaseClient();
@@ -82,7 +89,7 @@ try {
     $registrationPending = $touristPending + $citizenPending;
     
     // =========================================================
-    // 4. Citizen Reports
+    // 4. Citizen Reports & Risk Zones
     // =========================================================
     $citizenValidatedData = $client->asService(
         'GET',
@@ -104,6 +111,82 @@ try {
     
     // Total pending count for badge
     $pendingCount = $registrationPending + $citizenReportsCount;
+    
+    // =========================================================
+    // 5. Get all reports for Top 5 Risk Areas & Emergency Alerts
+    // =========================================================
+    $allReports = $client->asService(
+        'GET',
+        '/rest/v1/incident_reports?select=*,latitude,longitude,location,category,urgency_level,status,created_at,ticket_id&order=created_at.desc'
+    );
+    
+    if (is_array($allReports)) {
+        // =========================================================
+        // Emergency Alerts (Pending Emergency Reports)
+        // =========================================================
+        $emergencyReports = array_filter($allReports, function($report) {
+            $status = strtolower($report['status'] ?? '');
+            $urgency = $report['urgency_level'] ?? 'Normal';
+            return $urgency === 'Emergency' && 
+                   ($status === 'pending review' || $status === 'pending');
+        });
+        $emergencyCount = count($emergencyReports);
+        
+        // Sort emergency reports by created_at (newest first)
+        usort($emergencyReports, function($a, $b) {
+            return strtotime($b['created_at'] ?? '') - strtotime($a['created_at'] ?? '');
+        });
+        
+        // Take only first 5 emergency reports
+        $emergencyReports = array_slice($emergencyReports, 0, 5);
+        
+        // =========================================================
+        // Top 5 Risk Areas (by report count)
+        // =========================================================
+        $locationGroups = [];
+        foreach ($allReports as $report) {
+            // Only include validated reports
+            $status = strtolower($report['status'] ?? '');
+            if ($status !== 'validated' && $status !== 'resolved') continue;
+            
+            $lat = (float)($report['latitude'] ?? 0);
+            $lng = (float)($report['longitude'] ?? 0);
+            if ($lat === 0.0 && $lng === 0.0) continue;
+            
+            $key = $lat . ',' . $lng;
+            if (!isset($locationGroups[$key])) {
+                $locationGroups[$key] = [
+                    'name' => $report['location'] ?? 'Unknown Location',
+                    'lat' => $lat,
+                    'lng' => $lng,
+                    'count' => 0,
+                    'category' => $report['category'] ?? 'N/A',
+                    'reports' => []
+                ];
+            }
+            $locationGroups[$key]['count']++;
+            $locationGroups[$key]['reports'][] = $report;
+        }
+        
+        // Sort by count (descending) and take top 5
+        usort($locationGroups, function($a, $b) {
+            return $b['count'] - $a['count'];
+        });
+        $top5RiskAreas = array_slice($locationGroups, 0, 5);
+        
+        // Assign risk levels to top 5 areas
+        foreach ($top5RiskAreas as &$area) {
+            $count = $area['count'];
+            if ($count >= 10) {
+                $area['risk'] = 'Red';
+            } elseif ($count >= 5) {
+                $area['risk'] = 'Orange';
+            } else {
+                $area['risk'] = 'Green';
+            }
+        }
+        unset($area);
+    }
     
 } catch (Throwable $e) {
     $pendingCount = 0;
@@ -209,6 +292,259 @@ render_admin_start(
     font-size: 16px;
     font-weight: 600;
     color: #1a1a2e;
+}
+
+/* =========================================================
+   TWO COLUMN SECTION - Top 5 Risk Areas + Emergency Alerts
+========================================================= */
+.two-col-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* =========================================================
+   TOP 5 RISK AREAS
+========================================================= */
+.top-areas-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #f1f3f5;
+    overflow: hidden;
+}
+
+.top-areas-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #f1f3f5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #fafbfc;
+}
+
+.top-areas-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.top-areas-header .badge {
+    font-size: 12px;
+    color: #6b7280;
+    background: #f1f5f9;
+    padding: 2px 12px;
+    border-radius: 20px;
+}
+
+.top-areas-body {
+    padding: 16px 20px;
+}
+
+.area-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    transition: background 0.2s;
+    border-bottom: 1px solid #f1f3f5;
+}
+
+.area-item:last-child {
+    border-bottom: none;
+}
+
+.area-item:hover {
+    background: #f8fafc;
+}
+
+.area-item .rank {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6b7280;
+    min-width: 28px;
+}
+
+.area-item .rank.gold { color: #f59e0b; }
+.area-item .rank.silver { color: #9ca3af; }
+.area-item .rank.bronze { color: #d97706; }
+
+.area-item .area-info {
+    flex: 1;
+}
+
+.area-item .area-info .name {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1a1a2e;
+}
+
+.area-item .area-info .meta {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.area-item .area-info .meta span {
+    margin-right: 8px;
+}
+
+.area-item .risk-badge-sm {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.risk-badge-sm-red { background: #fde2e5; color: #b42332; }
+.risk-badge-sm-orange { background: #fff0df; color: #b95f00; }
+.risk-badge-sm-green { background: #def7e8; color: #147a43; }
+
+.area-item .count-badge {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a1a2e;
+    background: #f1f5f9;
+    padding: 2px 10px;
+    border-radius: 12px;
+    min-width: 30px;
+    text-align: center;
+}
+
+.area-empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: #6b7280;
+}
+
+.area-empty i {
+    font-size: 28px;
+    display: block;
+    margin-bottom: 6px;
+    opacity: 0.4;
+}
+
+/* =========================================================
+   EMERGENCY ALERTS
+========================================================= */
+.emergency-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid #f1f3f5;
+    overflow: hidden;
+}
+
+.emergency-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #f1f3f5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: #fafbfc;
+}
+
+.emergency-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.emergency-header .emergency-badge {
+    font-size: 12px;
+    color: #991b1b;
+    background: #fee2e2;
+    padding: 2px 14px;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.emergency-body {
+    padding: 16px 20px;
+}
+
+.emergency-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    transition: background 0.2s;
+    border-bottom: 1px solid #f1f3f5;
+    cursor: pointer;
+}
+
+.emergency-item:last-child {
+    border-bottom: none;
+}
+
+.emergency-item:hover {
+    background: #fef2f2;
+}
+
+.emergency-item .icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.emergency-item .info {
+    flex: 1;
+    min-width: 0;
+}
+
+.emergency-item .info .ticket {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1a1a2e;
+}
+
+.emergency-item .info .details {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.emergency-item .info .details span {
+    margin-right: 8px;
+}
+
+.emergency-item .time {
+    font-size: 11px;
+    color: #6b7280;
+    flex-shrink: 0;
+}
+
+.emergency-empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: #6b7280;
+}
+
+.emergency-empty i {
+    font-size: 28px;
+    display: block;
+    margin-bottom: 6px;
+    opacity: 0.4;
+}
+
+.emergency-view-all {
+    display: block;
+    text-align: center;
+    padding: 10px;
+    border-top: 1px solid #f1f3f5;
+    color: #dc2626;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.emergency-view-all:hover {
+    background: #fef2f2;
 }
 
 /* Chart Section */
@@ -476,6 +812,9 @@ render_admin_start(
     .chart-grid-2 {
         grid-template-columns: repeat(2, 1fr);
     }
+    .two-col-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 768px) {
@@ -521,6 +860,10 @@ render_admin_start(
 
     .bar-item .bar {
         max-width: 32px;
+    }
+    
+    .two-col-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -578,6 +921,16 @@ render_admin_start(
         align-items: flex-start;
         gap: 4px;
     }
+    
+    .area-item {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .emergency-item {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
 }
 </style>
 
@@ -628,6 +981,109 @@ render_admin_start(
                 <strong>Citizen Reports</strong>
             </div>
         </a>
+    </section>
+
+    <!-- ============================================================
+         TWO COLUMN: Top 5 Risk Areas + Emergency Alerts
+    ============================================================ -->
+    <section class="two-col-grid">
+
+        <!-- Top 5 Risk Areas -->
+        <div class="top-areas-card">
+            <div class="top-areas-header">
+                <h3><i class='bx bx-trophy' style="color:#f59e0b;"></i> Top 5 Risk Areas</h3>
+                <span class="badge">By report count</span>
+            </div>
+            <div class="top-areas-body">
+                <?php if (!empty($top5RiskAreas)): ?>
+                    <?php foreach ($top5RiskAreas as $index => $area): 
+                        $rankClass = '';
+                        if ($index === 0) $rankClass = 'gold';
+                        elseif ($index === 1) $rankClass = 'silver';
+                        elseif ($index === 2) $rankClass = 'bronze';
+                        
+                        $riskClass = match($area['risk'] ?? 'Green') {
+                            'Red' => 'risk-badge-sm-red',
+                            'Orange' => 'risk-badge-sm-orange',
+                            default => 'risk-badge-sm-green'
+                        };
+                    ?>
+                        <div class="area-item">
+                            <span class="rank <?= $rankClass ?>">#<?= $index + 1 ?></span>
+                            <div class="area-info">
+                                <div class="name"><?= htmlspecialchars($area['name'] ?? 'Unknown') ?></div>
+                                <div class="meta">
+                                    <span>📂 <?= htmlspecialchars($area['category'] ?? 'N/A') ?></span>
+                                    <span class="risk-badge-sm <?= $riskClass ?>"><?= $area['risk'] ?? 'Green' ?></span>
+                                </div>
+                            </div>
+                            <span class="count-badge"><?= $area['count'] ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="area-empty">
+                        <i class='bx bx-check-circle'></i>
+                        <p>No validated reports found.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Emergency Alerts -->
+        <div class="emergency-card">
+            <div class="emergency-header">
+                <h3><i class='bx bx-alarm-exclamation' style="color:#dc2626;"></i> Emergency Alerts</h3>
+                <span class="emergency-badge"><?= $emergencyCount ?> pending</span>
+            </div>
+            <div class="emergency-body">
+                <?php if (!empty($emergencyReports)): ?>
+                    <?php foreach ($emergencyReports as $report): 
+                        $createdAt = $report['created_at'] ?? '';
+                        $timeAgo = 'Just now';
+                        if ($createdAt !== '') {
+                            try {
+                                $timestamp = strtotime($createdAt);
+                                $diff = time() - $timestamp;
+                                if ($diff < 60) {
+                                    $timeAgo = 'Just now';
+                                } elseif ($diff < 3600) {
+                                    $timeAgo = floor($diff / 60) . 'm ago';
+                                } elseif ($diff < 86400) {
+                                    $timeAgo = floor($diff / 3600) . 'h ago';
+                                } else {
+                                    $timeAgo = floor($diff / 86400) . 'd ago';
+                                }
+                            } catch (Throwable $e) {
+                                $timeAgo = 'N/A';
+                            }
+                        }
+                    ?>
+                        <a href="approve_citizen_report.php" class="emergency-item" style="text-decoration:none;color:inherit;display:flex;">
+                            <span class="icon">🔴</span>
+                            <div class="info">
+                                <div class="ticket"><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></div>
+                                <div class="details">
+                                    <span>📂 <?= htmlspecialchars($report['category'] ?? 'N/A') ?></span>
+                                    <span>📍 <?= htmlspecialchars($report['location'] ?? 'N/A') ?></span>
+                                </div>
+                            </div>
+                            <span class="time"><?= $timeAgo ?></span>
+                        </a>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="emergency-empty">
+                        <i class='bx bx-check-circle'></i>
+                        <p>No emergency alerts. All clear!</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <?php if ($emergencyCount > 5): ?>
+                <a href="approve_citizen_report.php?status=pending" class="emergency-view-all">
+                    View all <?= $emergencyCount ?> emergency reports →
+                </a>
+            <?php endif; ?>
+        </div>
+
     </section>
 
     <!-- CHART SECTION -->

@@ -1019,6 +1019,196 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         padding: 3px 12px;
     }
 }
+
+/* =========================================================
+   ZONE DRAWER - Click to Drill Down
+========================================================= */
+.drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.drawer-overlay.active {
+    display: block;
+}
+
+.drawer-panel {
+    position: fixed;
+    top: 0;
+    right: -650px;
+    width: 650px;
+    max-width: 95vw;
+    height: 100vh;
+    background: white;
+    z-index: 1000;
+    transition: right 0.3s ease;
+    box-shadow: -4px 0 30px rgba(0,0,0,0.2);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.drawer-panel.active {
+    right: 0;
+}
+
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f3f5;
+    background: white;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.drawer-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.drawer-header h2 i {
+    color: #3b82f6;
+}
+
+.drawer-header .drawer-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 0 8px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.drawer-header .drawer-close:hover {
+    color: #1a1a2e;
+}
+
+.drawer-body {
+    padding: 24px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.drawer-body .zone-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f1f3f5;
+}
+
+.drawer-body .zone-summary .total {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.drawer-body .zone-summary .total strong {
+    color: #1a1a2e;
+}
+
+.drawer-body .zone-summary .risk-level {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.drawer-body .report-item {
+    padding: 14px 16px;
+    border: 1px solid #f1f3f5;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+    cursor: default;
+}
+
+.drawer-body .report-item:hover {
+    background: #f8fafc;
+    border-color: #d1d5db;
+}
+
+.drawer-body .report-item .ticket-id {
+    font-weight: 600;
+    color: #1a1a2e;
+    font-size: 14px;
+}
+
+.drawer-body .report-item .report-meta {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+.drawer-body .report-item .report-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.drawer-body .risk-tag-sm {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.drawer-body .no-reports {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6b7280;
+}
+
+.drawer-body .no-reports i {
+    font-size: 36px;
+    display: block;
+    margin-bottom: 8px;
+    opacity: 0.4;
+}
+
+.loading-spinner {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6b7280;
+}
+
+.loading-spinner i {
+    font-size: 32px;
+    display: block;
+    margin-bottom: 8px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .drawer-panel {
+        width: 100vw;
+        max-width: 100vw;
+        right: -100vw;
+    }
+    
+    .drawer-body .report-item .report-meta {
+        flex-direction: column;
+        gap: 2px;
+    }
+}
 </style>
 
 <div class="risk-map-page">
@@ -1120,6 +1310,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                     <span class="legend-dot legend-green"></span> Green (1-4)
                 </span>
                 <span class="legend-badge">📍 KL only</span>
+                <span class="legend-badge" style="background:#dbeafe;color:#1e40af;">👆 Click zone for details</span>
             </div>
         </div>
         <div id="riskMap"></div>
@@ -1480,6 +1671,23 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 </div>
 
 <!-- =========================================================
+     ZONE DRAWER (Click to Drill Down)
+========================================================= -->
+<div class="drawer-overlay" id="zoneDrawerOverlay" onclick="closeZoneDrawer()"></div>
+<div class="drawer-panel" id="zoneDrawerPanel">
+    <div class="drawer-header">
+        <h2><i class='bx bx-list-ul'></i> Reports in <span id="zoneNameDisplay">Area</span></h2>
+        <button class="drawer-close" onclick="closeZoneDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="zoneDrawerBody">
+        <div class="loading-spinner">
+            <i class='bx bx-loader-alt'></i>
+            <p>Loading reports...</p>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
      Google Maps API and Libraries
 ========================================================= -->
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAqSOx69G4xtBku2qB76XDHJB-W-LORJgc&callback=initMap" async defer></script>
@@ -1489,6 +1697,9 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 <script>
 // Risk zone data from PHP
 const riskZones = <?= json_encode($zones) ?>;
+
+// Store all zone data for drawer access
+const zoneReportsData = <?= json_encode($zones) ?>;
 
 const KL_BOUNDS = {
     north: 3.28,
@@ -1562,7 +1773,7 @@ function initMap() {
         }
     });
 
-    // KL tags
+    // KL label
     const klLabel = new google.maps.InfoWindow({
         content: '<div style="font-weight:600;color:#1a1a2e;">📍 Kuala Lumpur</div>',
         position: { lat: KL_CENTER[0], lng: KL_CENTER[1] }
@@ -1582,7 +1793,7 @@ function initMap() {
             else if (zone.risk === 'Orange') radius = 300;
             else radius = 150;
 
-            // draw circles
+            // Draw circle
             const circle = new google.maps.Circle({
                 strokeColor: colour,
                 strokeOpacity: 0.8,
@@ -1595,24 +1806,21 @@ function initMap() {
                 clickable: true
             });
 
-            // Click the circle to display information.
-            const infoWindow = new google.maps.InfoWindow({
-                content: `
-                    <div style="font-family:Arial,sans-serif;padding:8px;">
-                        <strong>${zone.name}</strong><br>
-                        Risk Level: <span style="color:${colour};font-weight:600;">${zone.risk}</span><br>
-                        Reports: ${zone.count}<br>
-                        Category: ${zone.category}
-                    </div>
-                `
-            });
-
+            // Click to Drill Down - open drawer directly (no InfoWindow)
             circle.addListener('click', function(event) {
-                infoWindow.setPosition(event.latLng);
-                infoWindow.open(riskMap);
+                // Find the full zone data
+                const fullZone = zoneReportsData.find(z => 
+                    Math.abs(z.lat - zone.lat) < 0.0001 && 
+                    Math.abs(z.lng - zone.lng) < 0.0001
+                );
+                
+                // Open drawer directly, no InfoWindow
+                if (fullZone) {
+                    openZoneDrawer(fullZone);
+                }
             });
 
-            // mark
+            // Marker
             const marker = new google.maps.Marker({
                 position: { lat: zone.lat, lng: zone.lng },
                 map: riskMap,
@@ -1633,9 +1841,15 @@ function initMap() {
                 }
             });
 
+            // Click marker also opens drawer (no InfoWindow)
             marker.addListener('click', function() {
-                infoWindow.setPosition({ lat: zone.lat, lng: zone.lng });
-                infoWindow.open(riskMap);
+                const fullZone = zoneReportsData.find(z => 
+                    Math.abs(z.lat - zone.lat) < 0.0001 && 
+                    Math.abs(z.lng - zone.lng) < 0.0001
+                );
+                if (fullZone) {
+                    openZoneDrawer(fullZone);
+                }
             });
 
             bounds.extend({ lat: zone.lat, lng: zone.lng });
@@ -1645,6 +1859,83 @@ function initMap() {
             riskMap.fitBounds(bounds, { padding: 50 });
         }
     }
+}
+
+// ============================================================
+// Zone Drawer Functions (Click to Drill Down)
+// ============================================================
+
+function openZoneDrawer(zone) {
+    const overlay = document.getElementById('zoneDrawerOverlay');
+    const panel = document.getElementById('zoneDrawerPanel');
+    const body = document.getElementById('zoneDrawerBody');
+    const title = document.getElementById('zoneNameDisplay');
+    
+    // Set drawer title
+    title.textContent = zone.name || 'Unknown Area';
+    
+    const reports = zone.reports || [];
+    const riskLevel = zone.risk || 'Green';
+    const riskColor = riskLevel === 'Red' ? '#dc3545' : riskLevel === 'Orange' ? '#fd7e14' : '#28a745';
+    const riskTagClass = riskLevel === 'Red' ? 'risk-tag-red' : riskLevel === 'Orange' ? 'risk-tag-orange' : 'risk-tag-green';
+    
+    if (reports.length === 0) {
+        body.innerHTML = `
+            <div class="no-reports">
+                <i class='bx bx-check-circle'></i>
+                <p>No reports found for this area.</p>
+            </div>
+        `;
+    } else {
+        let html = `
+            <div class="zone-summary">
+                <span class="total"><strong>${reports.length}</strong> report${reports.length > 1 ? 's' : ''} found</span>
+                <span class="risk-level" style="color:${riskColor};">${riskLevel}</span>
+            </div>
+        `;
+        
+        // Sort reports by created_at (newest first)
+        const sortedReports = [...reports].sort((a, b) => {
+            return new Date(b.created_at) - new Date(a.created_at);
+        });
+        
+        sortedReports.forEach(function(report) {
+            const formattedDate = report.created_at ? new Date(report.created_at).toLocaleString() : 'N/A';
+            const urgencyLevel = report.urgency_level || 'Normal';
+            const urgencyIcon = urgencyLevel === 'Emergency' ? '🔴' : urgencyLevel === 'High' ? '🟠' : '🟢';
+            const ticketId = report.ticket_id || 'N/A';
+            const category = report.category || 'N/A';
+            const location = report.location || 'N/A';
+            
+            html += `
+                <div class="report-item">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                        <span class="ticket-id">${ticketId}</span>
+                        <span class="risk-tag-sm ${riskTagClass}">${riskLevel}</span>
+                    </div>
+                    <div class="report-meta">
+                        <span>📂 ${category}</span>
+                        <span>📍 ${location}</span>
+                        <span>${urgencyIcon} ${urgencyLevel}</span>
+                        <span>🕐 ${formattedDate}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        body.innerHTML = html;
+    }
+    
+    // Show drawer
+    overlay.classList.add('active');
+    panel.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeZoneDrawer() {
+    document.getElementById('zoneDrawerOverlay').classList.remove('active');
+    document.getElementById('zoneDrawerPanel').classList.remove('active');
+    document.body.style.overflow = '';
 }
 
 // Refresh the map when the window size changes.
