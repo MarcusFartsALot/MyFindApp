@@ -1773,13 +1773,6 @@ function initMap() {
         }
     });
 
-    // KL label
-    const klLabel = new google.maps.InfoWindow({
-        content: '<div style="font-weight:600;color:#1a1a2e;">📍 Kuala Lumpur</div>',
-        position: { lat: KL_CENTER[0], lng: KL_CENTER[1] }
-    });
-    klLabel.open(riskMap);
-
     // Draw risk zone circles.
     if (riskZones.length > 0) {
         const bounds = new google.maps.LatLngBounds();

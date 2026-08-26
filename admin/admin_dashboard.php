@@ -216,7 +216,7 @@ render_admin_start(
     align-items: center;
     gap: 20px;
     flex-wrap: wrap;
-    background: #f1f3f5;
+    background: linear-gradient(135deg, #dbeafe 0%, #93c5fd 50%, #bfdbfe 100%);
     padding: 24px 32px;
     border-radius: 16px;
     color: #1a1a2e;
@@ -239,7 +239,7 @@ render_admin_start(
 }
 
 .dashboard-header .header-badge {
-    background: rgba(0,0,0,0.06);
+    background: #D4CFC9;
     padding: 8px 20px;
     border-radius: 30px;
     font-size: 14px;
@@ -247,10 +247,10 @@ render_admin_start(
     border: none;
 }
 
-/* Card Grid */
+/* Card Grid - 4 cards */
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
 }
 
@@ -292,6 +292,13 @@ render_admin_start(
     font-size: 16px;
     font-weight: 600;
     color: #1a1a2e;
+}
+
+.metric-card .card-content .sub {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 400;
+    margin-top: 2px;
 }
 
 /* =========================================================
@@ -581,9 +588,9 @@ render_admin_start(
     border-radius: 20px;
 }
 
-.chart-grid-2 {
+.chart-grid-3 {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
     padding: 20px;
 }
@@ -616,6 +623,36 @@ render_admin_start(
     background: #f1f5f9;
     padding: 2px 12px;
     border-radius: 12px;
+    margin-left: 6px;
+}
+
+.chart-box-title .badge-tourist {
+    font-size: 11px;
+    font-weight: 500;
+    color: #1e40af;
+    background: #dbeafe;
+    padding: 2px 10px;
+    border-radius: 10px;
+    margin-left: 6px;
+}
+
+.chart-box-title .badge-citizen {
+    font-size: 11px;
+    font-weight: 500;
+    color: #5b21b6;
+    background: #ede9fe;
+    padding: 2px 10px;
+    border-radius: 10px;
+    margin-left: 6px;
+}
+
+.chart-box-title .badge-report {
+    font-size: 11px;
+    font-weight: 500;
+    color: #991b1b;
+    background: #fee2e2;
+    padding: 2px 10px;
+    border-radius: 10px;
     margin-left: 6px;
 }
 
@@ -716,7 +753,7 @@ render_admin_start(
 .chart-stats-simple {
     display: flex;
     justify-content: center;
-    gap: 20px;
+    gap: 16px;
     margin-top: 14px;
     font-size: 12px;
     flex-wrap: wrap;
@@ -727,7 +764,7 @@ render_admin_start(
 .chart-stats-simple .stat-item {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
 }
 
 .chart-stats-simple .dot {
@@ -750,40 +787,6 @@ render_admin_start(
 .chart-stats-simple .stat-label {
     font-size: 11px;
     color: #6b7280;
-}
-
-/* Registration breakdown */
-.registration-breakdown {
-    display: flex;
-    justify-content: center;
-    gap: 24px;
-    margin-top: 10px;
-    font-size: 13px;
-    flex-wrap: wrap;
-}
-
-.registration-breakdown .breakdown-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    color: #4b5563;
-}
-
-.registration-breakdown .breakdown-item .badge {
-    padding: 2px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-.badge-tourist {
-    background: #dbeafe;
-    color: #1e40af;
-}
-
-.badge-citizen {
-    background: #ede9fe;
-    color: #5b21b6;
 }
 
 /* Alert */
@@ -809,7 +812,7 @@ render_admin_start(
     .card-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    .chart-grid-2 {
+    .chart-grid-3 {
         grid-template-columns: repeat(2, 1fr);
     }
     .two-col-grid {
@@ -828,7 +831,7 @@ render_admin_start(
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .chart-grid-2 {
+    .chart-grid-3 {
         grid-template-columns: 1fr;
         gap: 16px;
         padding: 16px;
@@ -869,7 +872,26 @@ render_admin_start(
 
 @media (max-width: 480px) {
     .card-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .metric-card {
+        padding: 16px 10px;
+    }
+
+    .metric-card .card-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+    }
+
+    .metric-card .card-content strong {
+        font-size: 13px;
+    }
+
+    .metric-card .card-content .sub {
+        font-size: 10px;
     }
 
     .dashboard-header h1 {
@@ -908,11 +930,6 @@ render_admin_start(
 
     .chart-stats-simple {
         gap: 8px;
-        font-size: 11px;
-    }
-    
-    .registration-breakdown {
-        gap: 12px;
         font-size: 11px;
     }
     
@@ -955,30 +972,49 @@ render_admin_start(
         </div>
     <?php endif; ?>
 
-    <!-- CARD GRID -->
+    <!-- CARD GRID - 4 CARDS -->
     <section class="card-grid">
+        <!-- Card 1: View Risk Map -->
         <a class="metric-card" href="risk_map.php">
             <div class="card-icon" style="background:#dbeafe;color:#2563eb;">
                 <i class='bx bx-map'></i>
             </div>
             <div class="card-content">
                 <strong>View Risk Map</strong>
+                <div class="sub">View risk zones</div>
             </div>
         </a>
-        <a class="metric-card" href="approve_registration.php">
+
+        <!-- Card 2: Approve Tourist -->
+        <a class="metric-card" href="approve_tourist.php">
             <div class="card-icon" style="background:#fef3c7;color:#d97706;">
-                <i class='bx bx-user-plus'></i>
+                <i class='bx bx-user-check'></i>
             </div>
             <div class="card-content">
-                <strong>Approve Registration</strong>
+                <strong>Approve Tourist</strong>
+                <div class="sub">Review tourist registrations</div>
             </div>
         </a>
+
+        <!-- Card 3: Approve Citizen -->
+        <a class="metric-card" href="approve_citizen.php">
+            <div class="card-icon" style="background:#ede9fe;color:#7c3aed;">
+                <i class='bx bx-user-check'></i>
+            </div>
+            <div class="card-content">
+                <strong>Approve Citizen</strong>
+                <div class="sub">Review citizen registrations</div>
+            </div>
+        </a>
+
+        <!-- Card 4: Citizen Reports -->
         <a class="metric-card" href="approve_citizen_report.php">
             <div class="card-icon" style="background:#fde2e5;color:#dc2626;">
                 <i class='bx bx-flag'></i>
             </div>
             <div class="card-content">
                 <strong>Citizen Reports</strong>
+                <div class="sub">Review incident reports</div>
             </div>
         </a>
     </section>
@@ -1086,27 +1122,28 @@ render_admin_start(
 
     </section>
 
-    <!-- CHART SECTION -->
+    <!-- CHART SECTION - 3 Charts -->
     <section class="chart-section">
         <div class="chart-header">
             <h2><i class='bx bx-stats'></i> Module Status Distribution</h2>
         </div>
-        <div class="chart-grid-2">
+        <div class="chart-grid-3">
 
-            <!-- Module 1: Approve Registration -->
+            <!-- Chart 1: Approve Tourist -->
             <div class="chart-box">
                 <div class="chart-box-header">
                     <div class="chart-box-title">
-                        Approve Registration
-                        <span class="badge-total">Total: <?= $registrationApproved + $registrationRejected + $registrationPending ?></span>
+                        Approve Tourist
+                        <span class="badge-tourist">Tourist</span>
+                        <span class="badge-total">Total: <?= $touristApproved + $touristRejected + $touristPending ?></span>
                     </div>
                 </div>
                 <div class="chart-split">
                     <div class="chart-split-left">
                         <div class="donut-wrapper">
-                            <canvas id="registrationDonut"></canvas>
+                            <canvas id="touristDonut"></canvas>
                             <div class="donut-center-text">
-                                <span class="total-number"><?= $registrationApproved + $registrationRejected + $registrationPending ?></span>
+                                <span class="total-number"><?= $touristApproved + $touristRejected + $touristPending ?></span>
                                 <span class="total-label">Total</span>
                             </div>
                         </div>
@@ -1114,58 +1151,89 @@ render_admin_start(
                     <div class="chart-split-right">
                         <div class="bar-chart-vertical">
                             <div class="bar-item">
-                                <div class="bar-value"><?= $registrationApproved ?></div>
-                                <div class="bar bar-approved" style="height: <?= max(10, ($registrationApproved + $registrationRejected + $registrationPending) > 0 ? ($registrationApproved / max(1, $registrationApproved + $registrationRejected + $registrationPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-value"><?= $touristApproved ?></div>
+                                <div class="bar bar-approved" style="height: <?= max(10, ($touristApproved + $touristRejected + $touristPending) > 0 ? ($touristApproved / max(1, $touristApproved + $touristRejected + $touristPending)) * 70 : 10) ?>px;"></div>
                                 <div class="bar-label">Approved</div>
                             </div>
                             <div class="bar-item">
-                                <div class="bar-value"><?= $registrationRejected ?></div>
-                                <div class="bar bar-rejected" style="height: <?= max(10, ($registrationApproved + $registrationRejected + $registrationPending) > 0 ? ($registrationRejected / max(1, $registrationApproved + $registrationRejected + $registrationPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-value"><?= $touristRejected ?></div>
+                                <div class="bar bar-rejected" style="height: <?= max(10, ($touristApproved + $touristRejected + $touristPending) > 0 ? ($touristRejected / max(1, $touristApproved + $touristRejected + $touristPending)) * 70 : 10) ?>px;"></div>
                                 <div class="bar-label">Rejected</div>
                             </div>
                             <div class="bar-item">
-                                <div class="bar-value"><?= $registrationPending ?></div>
-                                <div class="bar bar-pending" style="height: <?= max(10, ($registrationApproved + $registrationRejected + $registrationPending) > 0 ? ($registrationPending / max(1, $registrationApproved + $registrationRejected + $registrationPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-value"><?= $touristPending ?></div>
+                                <div class="bar bar-pending" style="height: <?= max(10, ($touristApproved + $touristRejected + $touristPending) > 0 ? ($touristPending / max(1, $touristApproved + $touristRejected + $touristPending)) * 70 : 10) ?>px;"></div>
                                 <div class="bar-label">Pending</div>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <div class="registration-breakdown">
-                    <span class="breakdown-item">
-                        Tourist:
-                        <span class="badge badge-tourist"><?= $touristApproved ?> Approved</span>
-                        <span class="badge badge-tourist"><?= $touristRejected ?> Rejected</span>
-                        <span class="badge badge-tourist"><?= $touristPending ?> Pending</span>
-                    </span>
-                    <span class="breakdown-item">
-                        Citizen:
-                        <span class="badge badge-citizen"><?= $citizenApproved ?> Approved</span>
-                        <span class="badge badge-citizen"><?= $citizenRejected ?> Rejected</span>
-                        <span class="badge badge-citizen"><?= $citizenPending ?> Pending</span>
-                    </span>
-                </div>
-                
                 <div class="chart-stats-simple">
-                    <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $registrationApproved ?></span><span class="stat-label">Approved</span></span>
-                    <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $registrationRejected ?></span><span class="stat-label">Rejected</span></span>
-                    <span class="stat-item"><span class="dot dot-pending"></span><span class="stat-number"><?= $registrationPending ?></span><span class="stat-label">Pending</span></span>
+                    <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $touristApproved ?></span><span class="stat-label">Approved</span></span>
+                    <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $touristRejected ?></span><span class="stat-label">Rejected</span></span>
+                    <span class="stat-item"><span class="dot dot-pending"></span><span class="stat-number"><?= $touristPending ?></span><span class="stat-label">Pending</span></span>
                 </div>
             </div>
 
-            <!-- Module 2: Citizen Reports -->
+            <!-- Chart 2: Approve Citizen -->
+            <div class="chart-box">
+                <div class="chart-box-header">
+                    <div class="chart-box-title">
+                        Approve Citizen
+                        <span class="badge-citizen">Citizen</span>
+                        <span class="badge-total">Total: <?= $citizenApproved + $citizenRejected + $citizenPending ?></span>
+                    </div>
+                </div>
+                <div class="chart-split">
+                    <div class="chart-split-left">
+                        <div class="donut-wrapper">
+                            <canvas id="citizenRegDonut"></canvas>
+                            <div class="donut-center-text">
+                                <span class="total-number"><?= $citizenApproved + $citizenRejected + $citizenPending ?></span>
+                                <span class="total-label">Total</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-split-right">
+                        <div class="bar-chart-vertical">
+                            <div class="bar-item">
+                                <div class="bar-value"><?= $citizenApproved ?></div>
+                                <div class="bar bar-approved" style="height: <?= max(10, ($citizenApproved + $citizenRejected + $citizenPending) > 0 ? ($citizenApproved / max(1, $citizenApproved + $citizenRejected + $citizenPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-label">Approved</div>
+                            </div>
+                            <div class="bar-item">
+                                <div class="bar-value"><?= $citizenRejected ?></div>
+                                <div class="bar bar-rejected" style="height: <?= max(10, ($citizenApproved + $citizenRejected + $citizenPending) > 0 ? ($citizenRejected / max(1, $citizenApproved + $citizenRejected + $citizenPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-label">Rejected</div>
+                            </div>
+                            <div class="bar-item">
+                                <div class="bar-value"><?= $citizenPending ?></div>
+                                <div class="bar bar-pending" style="height: <?= max(10, ($citizenApproved + $citizenRejected + $citizenPending) > 0 ? ($citizenPending / max(1, $citizenApproved + $citizenRejected + $citizenPending)) * 70 : 10) ?>px;"></div>
+                                <div class="bar-label">Pending</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-stats-simple">
+                    <span class="stat-item"><span class="dot dot-approved"></span><span class="stat-number"><?= $citizenApproved ?></span><span class="stat-label">Approved</span></span>
+                    <span class="stat-item"><span class="dot dot-rejected"></span><span class="stat-number"><?= $citizenRejected ?></span><span class="stat-label">Rejected</span></span>
+                    <span class="stat-item"><span class="dot dot-pending"></span><span class="stat-number"><?= $citizenPending ?></span><span class="stat-label">Pending</span></span>
+                </div>
+            </div>
+
+            <!-- Chart 3: Citizen Reports -->
             <div class="chart-box">
                 <div class="chart-box-header">
                     <div class="chart-box-title">
                         Citizen Reports
+                        <span class="badge-report">Reports</span>
                         <span class="badge-total">Total: <?= $citizenValidated + $citizenRejectedReports + $citizenReportsCount ?></span>
                     </div>
                 </div>
                 <div class="chart-split">
                     <div class="chart-split-left">
                         <div class="donut-wrapper">
-                            <canvas id="citizenDonut"></canvas>
+                            <canvas id="citizenReportDonut"></canvas>
                             <div class="donut-center-text">
                                 <span class="total-number"><?= $citizenValidated + $citizenRejectedReports + $citizenReportsCount ?></span>
                                 <span class="total-label">Total</span>
@@ -1209,15 +1277,15 @@ render_admin_start(
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-    // Registration Doughnut
-    const registrationCtx = document.getElementById('registrationDonut');
-    if (registrationCtx) {
-        new Chart(registrationCtx, {
+    // Chart 1: Tourist Doughnut
+    const touristCtx = document.getElementById('touristDonut');
+    if (touristCtx) {
+        new Chart(touristCtx, {
             type: 'doughnut',
             data: {
                 labels: ['Approved', 'Rejected', 'Pending'],
                 datasets: [{
-                    data: [<?= $registrationApproved ?>, <?= $registrationRejected ?>, <?= $registrationPending ?>],
+                    data: [<?= $touristApproved ?>, <?= $touristRejected ?>, <?= $touristPending ?>],
                     backgroundColor: ['#10b981', '#dc3545', '#f59e0b'],
                     borderWidth: 2,
                     borderColor: '#ffffff'
@@ -1232,10 +1300,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Citizen Doughnut
-    const citizenCtx = document.getElementById('citizenDonut');
-    if (citizenCtx) {
-        new Chart(citizenCtx, {
+    // Chart 2: Citizen Registration Doughnut
+    const citizenRegCtx = document.getElementById('citizenRegDonut');
+    if (citizenRegCtx) {
+        new Chart(citizenRegCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Approved', 'Rejected', 'Pending'],
+                datasets: [{
+                    data: [<?= $citizenApproved ?>, <?= $citizenRejected ?>, <?= $citizenPending ?>],
+                    backgroundColor: ['#10b981', '#dc3545', '#f59e0b'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '65%',
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Chart 3: Citizen Reports Doughnut
+    const citizenReportCtx = document.getElementById('citizenReportDonut');
+    if (citizenReportCtx) {
+        new Chart(citizenReportCtx, {
             type: 'doughnut',
             data: {
                 labels: ['Validated', 'Rejected', 'Pending'],

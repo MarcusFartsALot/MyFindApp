@@ -6,6 +6,7 @@ function render_sidebar(array $admin, string $active): void
 {
     $name = escape((string) ($admin['full_name'] ?? 'Administrator'));
     $job = 'System Administrator';
+    $profileImage = $admin['profile_image'] ?? null;
     ?>
     <aside class="sidebar" id="sidebar">
         <div class="logo-details">
@@ -26,7 +27,14 @@ function render_sidebar(array $admin, string $active): void
                 </a>
                 <span class="tooltip">Dashboard</span>
             </li>
-            <li>
+            <li class="<?= $active === 'admin_management' ? 'active' : '' ?>">
+                <a href="admin_management.php">
+                    <i class='bx bx-user'></i>
+                    <span class="links_name">Admins</span>
+                </a>
+                <span class="tooltip">Admins</span>
+            </li>
+            <li class="<?= $active === 'profile' ? 'active' : '' ?>">
                 <a href="profile.php">
                     <i class='bx bx-cog'></i>
                     <span class="links_name">Settings</span>
@@ -35,7 +43,13 @@ function render_sidebar(array $admin, string $active): void
             </li>
             <li class="profile">
                 <div class="profile-details">
-                    <div class="profile-avatar"><i class='bx bx-user'></i></div>
+                    <div class="profile-avatar">
+                        <?php if (!empty($profileImage)): ?>
+                            <img src="<?= escape($profileImage) ?>" alt="<?= $name ?>" class="profile-avatar-img">
+                        <?php else: ?>
+                            <i class='bx bx-user'></i>
+                        <?php endif; ?>
+                    </div>
                     <div class="name_job">
                         <div class="name"><?= $name ?></div>
                         <div class="job"><?= $job ?></div>

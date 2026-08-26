@@ -19,11 +19,8 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 10;
 $offset = ($page - 1) * $perPage;
 $statusFilter = $_GET['status'] ?? 'all';
-$typeFilter = $_GET['type'] ?? 'all';
 
-// ============================================================
-// FR2.4: Advanced Filtering & Search - Filter Parameters
-// ============================================================
+// Filter Parameters
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo = $_GET['date_to'] ?? '';
 $searchQuery = trim($_GET['search'] ?? '');
@@ -81,7 +78,7 @@ function supabaseRequest($method, $endpoint, $body = null, $query = []) {
 
 /*
 |--------------------------------------------------------------------------
-| Helper: Get full Storage URL from citizens or tourists bucket
+| Helper: Get full Storage URL
 |--------------------------------------------------------------------------
 */
 function getFullStorageUrl($path) {
@@ -94,13 +91,12 @@ function getFullStorageUrl($path) {
 
 /*
 |--------------------------------------------------------------------------
-| Handle Approve / Reject for Tourist or Citizen
+| Handle Approve / Reject for Citizen
 |--------------------------------------------------------------------------
 */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profileId = trim((string)($_POST['profile_id'] ?? ''));
     $decision = trim((string)($_POST['decision'] ?? ''));
-    $type = trim((string)($_POST['type'] ?? 'tourist'));
 
     if ($profileId === '') {
         $actionError = 'Invalid ID.';
@@ -110,33 +106,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $newStatus = $decision === 'approve' ? 'approved' : 'rejected';
             
-            if ($type === 'tourist') {
-                supabaseRequest(
-                    'PATCH',
-                    '/rest/v1/tourists?profile_id=eq.' . rawurlencode($profileId),
-                    [
-                        'verification_status' => $newStatus,
-                        'verified_at' => gmdate('c'),
-                        'verified_by' => $admin['id'] ?? null
-                    ]
-                );
-            } else {
-                supabaseRequest(
-                    'PATCH',
-                    '/rest/v1/citizens?profile_id=eq.' . rawurlencode($profileId),
-                    [
-                        'verification_status' => $newStatus,
-                        'verified_at' => gmdate('c'),
-                        'verified_by' => $admin['id'] ?? null
-                    ]
-                );
-            }
+            supabaseRequest(
+                'PATCH',
+                '/rest/v1/citizens?profile_id=eq.' . rawurlencode($profileId),
+                [
+                    'verification_status' => $newStatus,
+                    'verified_at' => gmdate('c'),
+                    'verified_by' => $admin['id'] ?? null
+                ]
+            );
 
             $actionMessage = $decision === 'approve'
-                ? ucfirst($type) . ' has been approved successfully.'
-                : ucfirst($type) . ' has been rejected successfully.';
+                ? 'Citizen has been approved successfully.'
+                : 'Citizen has been rejected successfully.';
 
-            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&type=' . $typeFilter . '&date_from=' . $dateFrom . '&date_to=' . $dateTo . '&search=' . urlencode($searchQuery) . '&page=' . $page);
+            header('Location: ' . $_SERVER['PHP_SELF'] . '?status=' . $statusFilter . '&date_from=' . $dateFrom . '&date_to=' . $dateTo . '&search=' . urlencode($searchQuery) . '&page=' . $page);
             exit;
         } catch (Throwable $e) {
             $actionError = 'Unable to update. Please try again later.';
@@ -147,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
-| Load Tourists and Citizens with Stats & Filters (FR2.4)
+| Load Citizens with Stats & Filters
 |--------------------------------------------------------------------------
 */
 $items = [];
@@ -155,39 +139,24 @@ $totalItems = 0;
 $pendingCount = 0;
 $approvedCount = 0;
 $rejectedCount = 0;
-$touristCount = 0;
-$citizenCount = 0;
 
 try {
+    // Get Citizens only
+    $citizens = supabaseRequest('GET', '/rest/v1/citizens?select=*&order=verified_at.desc.nullslast');
     $allItems = [];
     
-    // 1. Get Tourists
-    $tourists = supabaseRequest('GET', '/rest/v1/tourists?select=*&order=verified_at.desc.nullslast');
-    if (is_array($tourists)) {
-        foreach ($tourists as $t) {
-            $t['_type'] = 'tourist';
-            $t['_display_name'] = 'Tourist';
-            $t['_icon'] = '';
-            $t['_photo_front'] = getFullStorageUrl($t['passport_front_url'] ?? null, 'tourist');
-            $t['_photo_back'] = getFullStorageUrl($t['passport_back_url'] ?? null, 'tourist');
-            $allItems[] = $t;
-        }
-    }
-    
-    // 2. Get Citizens
-    $citizens = supabaseRequest('GET', '/rest/v1/citizens?select=*&order=verified_at.desc.nullslast');
     if (is_array($citizens)) {
         foreach ($citizens as $c) {
             $c['_type'] = 'citizen';
             $c['_display_name'] = 'Citizen';
             $c['_icon'] = '';
-            $c['_photo_front'] = getFullStorageUrl($c['ic_front_url'] ?? null, 'citizen');
-            $c['_photo_back'] = getFullStorageUrl($c['ic_back_url'] ?? null, 'citizen');
+            $c['_photo_front'] = getFullStorageUrl($c['ic_front_url'] ?? null);
+            $c['_photo_back'] = getFullStorageUrl($c['ic_back_url'] ?? null);
             $allItems[] = $c;
         }
     }
     
-    // 3. FR2.4: Date Range Filter
+    // Date Range Filter
     if ($dateFrom !== '') {
         $allItems = array_filter($allItems, function($item) use ($dateFrom) {
             $createdAt = $item['created_at'] ?? '';
@@ -203,28 +172,19 @@ try {
         });
     }
     
-    // 4. FR2.4: Keyword Search (Profile ID, Passport only)
+    // Keyword Search
     if ($searchQuery !== '') {
         $searchLower = strtolower($searchQuery);
         $allItems = array_filter($allItems, function($item) use ($searchLower) {
             $profileId = strtolower($item['profile_id'] ?? '');
-            $passport = strtolower($item['passport_number'] ?? '');
             $ic = strtolower($item['ic_number'] ?? '');
             
             return strpos($profileId, $searchLower) !== false ||
-                   strpos($passport, $searchLower) !== false ||
                    strpos($ic, $searchLower) !== false;
         });
     }
     
-    // 5. Filter by type
-    if ($typeFilter === 'tourist') {
-        $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'tourist');
-    } elseif ($typeFilter === 'citizen') {
-        $allItems = array_filter($allItems, fn($item) => $item['_type'] === 'citizen');
-    }
-    
-    // 6. Filter by status
+    // Filter by status
     if ($statusFilter !== 'all') {
         $allItems = array_filter($allItems, function($item) use ($statusFilter) {
             $status = strtolower($item['verification_status'] ?? '');
@@ -232,26 +192,23 @@ try {
         });
     }
     
-    // 7. Sort by created_at desc
+    // Sort by created_at desc
     usort($allItems, function($a, $b) {
         $timeA = strtotime($a['created_at'] ?? $a['verified_at'] ?? 'now');
         $timeB = strtotime($b['created_at'] ?? $b['verified_at'] ?? 'now');
         return $timeB - $timeA;
     });
     
-    // 8. Count stats
+    // Count stats
     $totalItems = count($allItems);
     foreach ($allItems as $item) {
         $status = strtolower($item['verification_status'] ?? '');
         if ($status === 'pending') $pendingCount++;
         elseif ($status === 'approved') $approvedCount++;
         elseif ($status === 'rejected') $rejectedCount++;
-        
-        if ($item['_type'] === 'tourist') $touristCount++;
-        else $citizenCount++;
     }
     
-    // 9. Paginate
+    // Paginate
     $items = array_slice($allItems, $offset, $perPage);
     
 } catch (Throwable $e) {
@@ -261,7 +218,7 @@ try {
 
 $totalPages = ceil($totalItems / $perPage);
 
-render_admin_start('Approve Registrations', $admin, 'dashboard');
+render_admin_start('Approve Citizens', $admin, 'dashboard');
 
 ?>
 
@@ -269,13 +226,13 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 /* =========================================================
    PAGE LAYOUT
 ========================================================= */
-.tourist-page {
+.citizen-page {
     display: flex;
     flex-direction: column;
     gap: 24px;
 }
 
-.tourist-header {
+.citizen-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -283,18 +240,18 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     flex-wrap: wrap;
 }
 
-.tourist-header h1 {
+.citizen-header h1 {
     margin: 0;
     font-size: 24px;
     font-weight: 700;
     color: #1a1a2e;
 }
 
-.tourist-header h1 i {
-    color: #3b82f6;
+.citizen-header h1 i {
+    color: #8b5cf6;
 }
 
-.tourist-header .subtitle {
+.citizen-header .subtitle {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -302,13 +259,13 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     flex-wrap: wrap;
 }
 
-.tourist-header .subtitle p {
+.citizen-header .subtitle p {
     margin: 0;
     opacity: .7;
     font-size: 14px;
 }
 
-.tourist-header .badge-tourists {
+.citizen-header .badge-citizens {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -316,8 +273,8 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
-    background: #dbeafe;
-    color: #1e40af;
+    background: #ede9fe;
+    color: #5b21b6;
 }
 
 .btn-back {
@@ -343,7 +300,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 ========================================================= */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
 }
 
@@ -386,11 +343,9 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 .stat-pending .stat-number { color: #f59e0b; }
 .stat-approved .stat-number { color: #10b981; }
 .stat-rejected .stat-number { color: #dc3545; }
-.stat-tourist .stat-number { color: #3b82f6; }
-.stat-citizen .stat-number { color: #8b5cf6; }
 
 /* =========================================================
-   FILTER BAR - Enhanced (FR2.4)
+   FILTER BAR
 ========================================================= */
 .filter-bar {
     display: flex;
@@ -458,18 +413,6 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     background: #dc3545;
     color: white;
     border-color: #dc3545;
-}
-
-.filter-btn.active-tourist {
-    background: #3b82f6;
-    color: white;
-    border-color: #3b82f6;
-}
-
-.filter-btn.active-citizen {
-    background: #8b5cf6;
-    color: white;
-    border-color: #8b5cf6;
 }
 
 .filter-divider {
@@ -560,7 +503,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     background: #e5e7eb;
 }
 
-/* FR2.4: Active Filters Display */
+/* Active Filters Display */
 .active-filters {
     display: flex;
     gap: 6px;
@@ -611,18 +554,18 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     overflow: hidden;
 }
 
-.tourist-table {
+.citizen-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
 }
 
-.tourist-table thead {
+.citizen-table thead {
     background: #f8fafc;
     border-bottom: 2px solid #e5e7eb;
 }
 
-.tourist-table th {
+.citizen-table th {
     padding: 14px 16px;
     text-align: left;
     font-weight: 600;
@@ -632,21 +575,21 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     letter-spacing: 0.05em;
 }
 
-.tourist-table td {
+.citizen-table td {
     padding: 14px 16px;
     border-bottom: 1px solid #f1f3f5;
     vertical-align: middle;
 }
 
-.tourist-table tbody tr:hover {
+.citizen-table tbody tr:hover {
     background: #f8fafc;
 }
 
-.tourist-table tbody tr:last-child td {
+.citizen-table tbody tr:last-child td {
     border-bottom: none;
 }
 
-.tourist-id {
+.citizen-id {
     font-weight: 600;
     color: #1a1a2e;
     font-family: monospace;
@@ -658,11 +601,6 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     border-radius: 12px;
     font-size: 11px;
     font-weight: 600;
-}
-
-.type-tourist {
-    background: #dbeafe;
-    color: #1e40af;
 }
 
 .type-citizen {
@@ -795,7 +733,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 /* =========================================================
    ALERTS
 ========================================================= */
-.tourist-alert {
+.citizen-alert {
     padding: 14px 18px;
     border-radius: 12px;
     display: flex;
@@ -803,16 +741,16 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     gap: 10px;
 }
 
-.tourist-alert i {
+.citizen-alert i {
     font-size: 20px;
 }
 
-.tourist-success {
+.citizen-success {
     background: #d1fae5;
     color: #065f46;
 }
 
-.tourist-error {
+.citizen-error {
     background: #fee2e2;
     color: #991b1b;
 }
@@ -1092,7 +1030,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 ========================================================= */
 @media (max-width: 1024px) {
     .stats-grid {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -1101,12 +1039,12 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
         grid-template-columns: repeat(2, 1fr);
     }
     
-    .tourist-table {
+    .citizen-table {
         font-size: 12px;
     }
     
-    .tourist-table th,
-    .tourist-table td {
+    .citizen-table th,
+    .citizen-table td {
         padding: 10px 12px;
     }
     
@@ -1158,8 +1096,8 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
         text-align: center;
     }
 
-    .tourist-table th,
-    .tourist-table td {
+    .citizen-table th,
+    .citizen-table td {
         padding: 8px 10px;
         font-size: 11px;
     }
@@ -1171,14 +1109,14 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 }
 </style>
 
-<div class="tourist-page">
+<div class="citizen-page">
 
     <!-- HEADER -->
-    <section class="tourist-header">
+    <section class="citizen-header">
         <div>
             <div class="subtitle">
-                <p>Review tourist and citizen registrations, then approve or reject them.</p>
-                <span class="badge-tourists">🪪 All Registrations</span>
+                <p>Review citizen registrations, then approve or reject them.</p>
+                <span class="badge-citizens">🪪 Citizens</span>
             </div>
         </div>
         <a href="admin_dashboard.php" class="btn-back">
@@ -1188,21 +1126,21 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 
     <!-- ALERTS -->
     <?php if ($actionMessage !== null): ?>
-        <div class="tourist-alert tourist-success" role="alert">
+        <div class="citizen-alert citizen-success" role="alert">
             <i class='bx bx-check-circle'></i>
             <?= htmlspecialchars($actionMessage, ENT_QUOTES, 'UTF-8') ?>
         </div>
     <?php endif; ?>
 
     <?php if ($actionError !== null): ?>
-        <div class="tourist-alert tourist-error" role="alert">
+        <div class="citizen-alert citizen-error" role="alert">
             <i class='bx bx-error-circle'></i>
             <?= htmlspecialchars($actionError, ENT_QUOTES, 'UTF-8') ?>
         </div>
     <?php endif; ?>
 
     <?php if ($loadError !== null): ?>
-        <div class="tourist-alert tourist-error" role="alert">
+        <div class="citizen-alert citizen-error" role="alert">
             <i class='bx bx-error-circle'></i>
             <?= htmlspecialchars($loadError, ENT_QUOTES, 'UTF-8') ?>
         </div>
@@ -1212,7 +1150,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
     <section class="stats-grid">
         <div class="stat-card stat-total">
             <span class="stat-number"><?= $totalItems ?></span>
-            <span class="stat-label">Total Registrations</span>
+            <span class="stat-label">Total Citizens</span>
         </div>
         <div class="stat-card stat-pending">
             <span class="stat-number"><?= $pendingCount ?></span>
@@ -1226,46 +1164,26 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
             <span class="stat-number"><?= $rejectedCount ?></span>
             <span class="stat-label">Rejected</span>
         </div>
-        <div class="stat-card stat-tourist">
-            <span class="stat-number"><?= $touristCount ?></span>
-            <span class="stat-label">Tourists</span>
-        </div>
-        <div class="stat-card stat-citizen">
-            <span class="stat-number"><?= $citizenCount ?></span>
-            <span class="stat-label">Citizens</span>
-        </div>
     </section>
 
-    <!-- ============================================================
-         FILTER BAR - Enhanced (FR2.4)
-    ============================================================ -->
+    <!-- FILTER BAR -->
     <div class="filter-bar">
-        <!-- Row 1: Type & Status Filters -->
+        <!-- Row 1: Status Filters -->
         <div class="filter-row">
             <div class="filter-group">
-                <span class="filter-label">Type:</span>
-                <a href="?type=all&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'all' ? 'active' : '' ?>">All</a>
-                <a href="?type=tourist&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'tourist' ? 'active-tourist' : '' ?>">Tourist</a>
-                <a href="?type=citizen&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $typeFilter === 'citizen' ? 'active-citizen' : '' ?>">Citizen</a>
-            </div>
-            
-            <div class="filter-group">
                 <span class="filter-label">Status:</span>
-                <a href="?type=<?= $typeFilter ?>&status=all&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
-                <a href="?type=<?= $typeFilter ?>&status=pending&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">Pending</a>
-                <a href="?type=<?= $typeFilter ?>&status=approved&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">Approved</a>
-                <a href="?type=<?= $typeFilter ?>&status=rejected&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">Rejected</a>
+                <a href="?status=all&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'all' ? 'active' : '' ?>">All</a>
+                <a href="?status=pending&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'pending' ? 'active-pending' : '' ?>">Pending</a>
+                <a href="?status=approved&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'approved' ? 'active-approved' : '' ?>">Approved</a>
+                <a href="?status=rejected&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>&page=1" class="filter-btn <?= $statusFilter === 'rejected' ? 'active-rejected' : '' ?>">Rejected</a>
             </div>
         </div>
 
-        <!-- Row 2: FR2.4 Advanced Filters -->
+        <!-- Row 2: Advanced Filters -->
         <div class="filter-row">
             <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%;" id="filterForm">
-                <!-- Hidden fields to preserve filters -->
                 <input type="hidden" name="status" value="<?= $statusFilter ?>">
-                <input type="hidden" name="type" value="<?= $typeFilter ?>">
 
-                <!-- FR2.4: Date Range Filter -->
                 <div class="filter-group">
                     <span class="filter-label">Date:</span>
                     <input type="date" name="date_from" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateFrom) ?>" placeholder="From">
@@ -1273,38 +1191,30 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                     <input type="date" name="date_to" class="filter-input filter-input-sm" value="<?= htmlspecialchars($dateTo) ?>" placeholder="To">
                 </div>
 
-                <!-- FR2.4: Keyword Search (Profile ID, Passport, IC) -->
                 <div class="filter-group">
                     <span class="filter-label">Search:</span>
-                    <input type="text" name="search" class="filter-input filter-input-sm" placeholder="Profile ID, Passport, IC..." value="<?= htmlspecialchars($searchQuery) ?>" style="min-width:160px;">
+                    <input type="text" name="search" class="filter-input filter-input-sm" placeholder="Profile ID, IC..." value="<?= htmlspecialchars($searchQuery) ?>" style="min-width:160px;">
                 </div>
 
-                <!-- Action Buttons -->
                 <div class="filter-actions">
                     <button type="submit" class="btn-filter btn-filter-primary">
                         <i class='bx bx-filter'></i> Apply
                     </button>
-                    <a href="approve_registration.php" class="btn-filter btn-filter-reset">
+                    <a href="approve_citizen.php" class="btn-filter btn-filter-reset">
                         <i class='bx bx-reset'></i> Reset
                     </a>
                 </div>
             </form>
         </div>
 
-        <!-- FR2.4: Active Filters Display -->
-        <?php if ($statusFilter !== 'all' || $typeFilter !== 'all' || $dateFrom !== '' || $dateTo !== '' || $searchQuery !== ''): ?>
+        <!-- Active Filters Display -->
+        <?php if ($statusFilter !== 'all' || $dateFrom !== '' || $dateTo !== '' || $searchQuery !== ''): ?>
             <div class="active-filters">
                 <span style="font-size:11px;color:#6b7280;font-weight:500;">Active Filters:</span>
                 <?php if ($statusFilter !== 'all'): ?>
                     <span class="filter-badge">
                         Status: <?= ucfirst($statusFilter) ?>
                         <span class="remove" onclick="removeFilter('status')">&times;</span>
-                    </span>
-                <?php endif; ?>
-                <?php if ($typeFilter !== 'all'): ?>
-                    <span class="filter-badge">
-                        Type: <?= ucfirst($typeFilter) ?>
-                        <span class="remove" onclick="removeFilter('type')">&times;</span>
                     </span>
                 <?php endif; ?>
                 <?php if ($dateFrom !== ''): ?>
@@ -1325,7 +1235,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         <span class="remove" onclick="removeFilter('search')">&times;</span>
                     </span>
                 <?php endif; ?>
-                <a href="approve_registration.php" style="font-size:11px;color:#dc3545;text-decoration:none;font-weight:500;">
+                <a href="approve_citizen.php" style="font-size:11px;color:#dc3545;text-decoration:none;font-weight:500;">
                     <i class='bx bx-x'></i> Clear All
                 </a>
             </div>
@@ -1334,14 +1244,13 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 
     <!-- TABLE -->
     <div class="table-container">
-        <table class="tourist-table">
+        <table class="citizen-table">
             <thead>
                 <tr>
                     <th>Type</th>
                     <th>Profile ID</th>
-                    <th>ID / Passport</th>
+                    <th>IC Number</th>
                     <th>Photo</th>
-                    <th>Country</th>
                     <th>Status</th>
                     <th>Action</th>
                 </tr>
@@ -1351,17 +1260,10 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                     <?php foreach ($items as $item): ?>
                         <?php
                         $profileId = (string)($item['profile_id'] ?? '');
-                        $type = $item['_type'] ?? 'tourist';
-                        $typeIcon = $item['_icon'] ?? '';
-                        $displayName = $item['_display_name'] ?? 'Tourist';
+                        $type = 'citizen';
+                        $displayName = 'Citizen';
                         
-                        $idNumber = $type === 'tourist' 
-                            ? ($item['passport_number'] ?? 'N/A')
-                            : ($item['ic_number'] ?? 'N/A');
-                        
-                        $country = $type === 'tourist'
-                            ? ($item['passport_issuing_country'] ?? 'N/A')
-                            : 'Malaysia';
+                        $icNumber = $item['ic_number'] ?? 'N/A';
                         
                         $status = (string)($item['verification_status'] ?? 'pending');
                         $statusLower = strtolower($status);
@@ -1385,12 +1287,12 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         ?>
                         <tr>
                             <td>
-                                <span class="type-badge <?= $type === 'tourist' ? 'type-tourist' : 'type-citizen' ?>">
-                                    <?= $displayName ?>
+                                <span class="type-badge type-citizen">
+                                    Citizen
                                 </span>
                             </td>
-                            <td class="tourist-id"><?= htmlspecialchars(substr($profileId, 0, 8) . '...', ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><?= htmlspecialchars($idNumber, ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="citizen-id"><?= htmlspecialchars(substr($profileId, 0, 8) . '...', ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars($icNumber, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <?php if ($photoFront): ?>
                                     <img class="photo-thumb" src="<?= htmlspecialchars($photoFront, ENT_QUOTES, 'UTF-8') ?>" 
@@ -1399,14 +1301,13 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                                     <div class="photo-thumb-placeholder">📷</div>
                                 <?php endif; ?>
                             </td>
-                            <td><?= htmlspecialchars($country, ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
                                 <span class="status-badge <?= $statusClass ?>">
                                     <?= htmlspecialchars($statusDisplay, ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </td>
                             <td>
-                                <button class="btn-view" onclick="openDrawer('<?= htmlspecialchars($profileId, ENT_QUOTES, 'UTF-8') ?>', '<?= $type ?>')">
+                                <button class="btn-view" onclick="openDrawer('<?= htmlspecialchars($profileId, ENT_QUOTES, 'UTF-8') ?>')">
                                     <i class='bx bx-show'></i> View
                                 </button>
                             </td>
@@ -1414,11 +1315,11 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 40px;">
+                        <td colspan="6" style="text-align: center; padding: 40px;">
                             <div class="empty-state">
-                                <i class='bx bx-check-circle'></i>
-                                <h3>No Registrations Found</h3>
-                                <p>No registrations found matching your criteria. Try adjusting your filters.</p>
+                                <i class='bx bx-user'></i>
+                                <h3>No Citizens Found</h3>
+                                <p>No citizens found matching your criteria. Try adjusting your filters.</p>
                             </div>
                         </td>
                     </tr>
@@ -1434,7 +1335,7 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                 </div>
                 <div class="pagination-links">
                     <?php if ($page > 1): ?>
-                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&larr;</a>
+                        <a href="?page=<?= $page - 1 ?>&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&larr;</a>
                     <?php else: ?>
                         <span class="disabled">&larr;</span>
                     <?php endif; ?>
@@ -1443,14 +1344,14 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
                         <?php if ($i === $page): ?>
                             <span class="active"><?= $i ?></span>
                         <?php elseif ($i === 1 || $i === $totalPages || abs($i - $page) <= 1): ?>
-                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>"><?= $i ?></a>
+                            <a href="?page=<?= $i ?>&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>"><?= $i ?></a>
                         <?php elseif ($i === $page - 2 || $i === $page + 2): ?>
                             <span>...</span>
                         <?php endif; ?>
                     <?php endfor; ?>
 
                     <?php if ($page < $totalPages): ?>
-                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&type=<?= $typeFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&rarr;</a>
+                        <a href="?page=<?= $page + 1 ?>&status=<?= $statusFilter ?>&date_from=<?= $dateFrom ?>&date_to=<?= $dateTo ?>&search=<?= urlencode($searchQuery) ?>">&rarr;</a>
                     <?php else: ?>
                         <span class="disabled">&rarr;</span>
                     <?php endif; ?>
@@ -1461,26 +1362,19 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
 
 </div>
 
-<!-- =========================================================
-     IMAGE VIEWER (Lightbox)
-========================================================= -->
+<!-- IMAGE VIEWER (Lightbox) -->
 <div class="image-viewer-overlay" id="imageViewer" onclick="closeImageViewer()">
     <button class="close-btn" onclick="closeImageViewer()">&times;</button>
     <img class="viewer-image" id="viewerImage" src="" alt="Evidence">
     <div class="viewer-info">Click anywhere or press ESC to close</div>
 </div>
 
-<!-- =========================================================
-     DETAILS DRAWER / SLIDE-OUT PANEL
-========================================================= -->
-
-<!-- Overlay -->
+<!-- DETAILS DRAWER -->
 <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
 
-<!-- Drawer Panel -->
 <div class="drawer-panel" id="drawerPanel">
     <div class="drawer-header">
-        <h2><i class='bx bx-detail'></i> Registration Details</h2>
+        <h2><i class='bx bx-detail'></i> Citizen Details</h2>
         <button class="drawer-close" onclick="closeDrawer()">&times;</button>
     </div>
     <div class="drawer-body" id="drawerBody">
@@ -1489,18 +1383,13 @@ render_admin_start('Approve Registrations', $admin, 'dashboard');
             <p>Loading...</p>
         </div>
     </div>
-    <div class="drawer-footer" id="drawerFooter">
-        <!-- Dynamic footer -->
-    </div>
+    <div class="drawer-footer" id="drawerFooter"></div>
 </div>
 
 <script>
 // Items data for drawer
 const itemsData = <?= json_encode($items) ?>;
 
-// ============================================================
-// FR2.4: Remove filter function
-// ============================================================
 function removeFilter(filterName) {
     const url = new URL(window.location.href);
     url.searchParams.delete(filterName);
@@ -1523,8 +1412,8 @@ function closeImageViewer() {
     document.getElementById('viewerImage').src = '';
 }
 
-function openDrawer(profileId, type) {
-    const item = itemsData.find(r => r.profile_id === profileId && r._type === type);
+function openDrawer(profileId) {
+    const item = itemsData.find(r => r.profile_id === profileId);
     if (!item) {
         alert('Record not found');
         return;
@@ -1535,7 +1424,6 @@ function openDrawer(profileId, type) {
     const body = document.getElementById('drawerBody');
     const footer = document.getElementById('drawerFooter');
 
-    // Determine status
     const statusLower = (item.verification_status || '').toLowerCase();
     const isPending = statusLower === 'pending';
     const isApproved = statusLower === 'approved';
@@ -1555,23 +1443,19 @@ function openDrawer(profileId, type) {
     };
     const statusDisplay = statusDisplayMap[statusLower] || item.verification_status || 'Pending Review';
 
-    const typeIcon = item._icon || '';
-    const displayName = item._display_name || 'Tourist';
-    
     const photoFront = item._photo_front || null;
     const photoBack = item._photo_back || null;
 
-    // Build photo HTML
     let photoHtml = '';
     if (photoFront || photoBack) {
         photoHtml = '<div class="photo-grid">';
         if (photoFront) {
-            photoHtml += `<img src="${photoFront}" alt="Front" onclick="openImagePreview('${photoFront}')" style="cursor:pointer;">`;
+            photoHtml += `<img src="${photoFront}" alt="IC Front" onclick="openImagePreview('${photoFront}')" style="cursor:pointer;">`;
         } else {
             photoHtml += `<div class="no-photo">No Front Photo</div>`;
         }
         if (photoBack) {
-            photoHtml += `<img src="${photoBack}" alt="Back" onclick="openImagePreview('${photoBack}')" style="cursor:pointer;">`;
+            photoHtml += `<img src="${photoBack}" alt="IC Back" onclick="openImagePreview('${photoBack}')" style="cursor:pointer;">`;
         } else {
             photoHtml += `<div class="no-photo">No Back Photo</div>`;
         }
@@ -1580,14 +1464,11 @@ function openDrawer(profileId, type) {
         photoHtml = '<div class="no-photo" style="padding:40px;text-align:center;border:1px solid #e5e7eb;border-radius:8px;">No photos uploaded</div>';
     }
 
-    // Build detail content
     body.innerHTML = `
         <div class="detail-section">
             <span class="detail-label">Type</span>
             <div class="detail-value">
-                <span class="type-badge ${type === 'tourist' ? 'type-tourist' : 'type-citizen'}">
-                    ${displayName}
-                </span>
+                <span class="type-badge type-citizen">Citizen</span>
             </div>
         </div>
 
@@ -1596,33 +1477,10 @@ function openDrawer(profileId, type) {
             <div class="detail-value" style="font-weight: 600; font-family: monospace;">${item.profile_id || 'N/A'}</div>
         </div>
 
-        ${type === 'tourist' ? `
-            <div class="detail-section">
-                <span class="detail-label">Passport Number</span>
-                <div class="detail-value" style="font-weight: 600;">${item.passport_number || 'N/A'}</div>
-            </div>
-            <div class="detail-section">
-                <span class="detail-label">Passport Issuing Country</span>
-                <div class="detail-value">${item.passport_issuing_country || 'N/A'}</div>
-            </div>
-            <div class="detail-section">
-                <span class="detail-label">Passport Issue Date</span>
-                <div class="detail-value">${item.passport_issue_date || 'N/A'}</div>
-            </div>
-            <div class="detail-section">
-                <span class="detail-label">Passport Expiry Date</span>
-                <div class="detail-value" style="color: ${item.passport_expiry_date ? new Date(item.passport_expiry_date) < new Date() ? '#dc3545' : '#10b981' : '#6b7280'};">${item.passport_expiry_date || 'N/A'}</div>
-            </div>
-            <div class="detail-section">
-                <span class="detail-label">Country of Residence</span>
-                <div class="detail-value">${item.country_of_residence || 'N/A'}</div>
-            </div>
-        ` : `
-            <div class="detail-section">
-                <span class="detail-label">IC Number (MyKad)</span>
-                <div class="detail-value" style="font-weight: 600;">${item.ic_number || 'N/A'}</div>
-            </div>
-        `}
+        <div class="detail-section">
+            <span class="detail-label">IC Number (MyKad)</span>
+            <div class="detail-value" style="font-weight: 600;">${item.ic_number || 'N/A'}</div>
+        </div>
 
         <hr class="detail-divider">
 
@@ -1646,28 +1504,25 @@ function openDrawer(profileId, type) {
         <hr class="detail-divider">
 
         <div class="detail-section">
-            <span class="detail-label">📸 Photos</span>
+            <span class="detail-label">📸 IC Photos</span>
             <div style="margin-top: 8px;">${photoHtml}</div>
         </div>
     `;
 
-    // Build footer actions
     if (isPending) {
         footer.innerHTML = `
             <form method="post" style="flex: 1; min-width: 120px;" 
-                  onsubmit="return confirm('Approve this ${displayName}?')">
+                  onsubmit="return confirm('Approve this citizen?')">
                 <input type="hidden" name="profile_id" value="${item.profile_id}">
                 <input type="hidden" name="decision" value="approve">
-                <input type="hidden" name="type" value="${type}">
                 <button type="submit" class="btn-approve-lg">
                     <i class='bx bx-check'></i> Approve
                 </button>
             </form>
             <form method="post" style="flex: 1; min-width: 120px;" 
-                  onsubmit="return confirm('Reject this ${displayName}?')">
+                  onsubmit="return confirm('Reject this citizen?')">
                 <input type="hidden" name="profile_id" value="${item.profile_id}">
                 <input type="hidden" name="decision" value="reject">
-                <input type="hidden" name="type" value="${type}">
                 <button type="submit" class="btn-reject-lg">
                     <i class='bx bx-x'></i> Reject
                 </button>
@@ -1683,7 +1538,6 @@ function openDrawer(profileId, type) {
         `;
     }
 
-    // Show drawer
     overlay.classList.add('active');
     panel.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1695,7 +1549,6 @@ function closeDrawer() {
     document.body.style.overflow = '';
 }
 
-// Close on ESC key
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeDrawer();
@@ -1705,7 +1558,5 @@ document.addEventListener('keydown', function(e) {
 </script>
 
 <?php
-
 render_admin_end();
-
 ?>
