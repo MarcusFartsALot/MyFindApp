@@ -288,7 +288,6 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     });
 
     try {
-      // Uses the phone's native geocoder, avoiding a separate Places API.
       // Local results are refined with a Kuala Lumpur-qualified query.
       final matches = await _findSearchLocations(query);
       if (!mounted) return;
@@ -441,8 +440,6 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
         )
         .toList();
 
-    // A KL-qualified pass improves local abbreviations such as KLCC. Global
-    // results such as Paris or New York remain the unmodified geocoder result.
     final alreadyQualified = query.toLowerCase().contains('kuala lumpur');
     final qualifiedMatches = alreadyQualified || rawLocal.isEmpty
         ? const <Location>[]

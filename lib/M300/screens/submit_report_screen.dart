@@ -2,7 +2,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -10,6 +9,7 @@ import '../../M400/models/profile_model.dart';
 import '../../core/exceptions/app_exceptions.dart';
 import '../services/community_report_service.dart';
 import '../widgets/edge_swipe_back.dart';
+import '../widgets/incident_location_picker.dart';
 
 class SubmitReportScreen extends StatefulWidget {
   final ProfileModel profile;
@@ -223,266 +223,18 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
   }
 
   Future<void> _openMapLocationPicker() async {
-    LatLng tempPicked = _selectedLatLng;
-    bool tempHasPin = _hasLocationPin;
-    final searchController = TextEditingController();
-    final geocoding = Geocoding();
-    GoogleMapController? expandedMapController;
-    bool searching = false;
-    bool dialogOpen = true;
-    String? searchError;
-
-    Future<void> searchLocation(StateSetter setMapState) async {
-      final query = searchController.text.trim();
-      if (query.isEmpty || searching) return;
-
-      if (!dialogOpen) return;
-      setMapState(() {
-        searching = true;
-        searchError = null;
-      });
-
-      try {
-        // Uses the phone's native geocoder. This intentionally avoids the
-        // billable Google Places and Google Geocoding web APIs.
-        final matches = await geocoding.locationFromAddress(query);
-        if (!dialogOpen) return;
-        if (matches.isEmpty) {
-          setMapState(() => searchError = 'No matching location found.');
-          return;
-        }
-
-        final result = matches.first;
-        tempPicked = LatLng(result.latitude, result.longitude);
-        tempHasPin = true;
-        setMapState(() {});
-        await expandedMapController?.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: tempPicked, zoom: 16),
-          ),
-        );
-      } on PlatformException catch (error) {
-        if (!dialogOpen) return;
-        setMapState(() {
-          searchError = error.code == 'IO_ERROR'
-              ? 'Location search is temporarily unavailable. You can still tap the map.'
-              : 'Could not search for that location.';
-        });
-      } catch (_) {
-        if (!dialogOpen) return;
-        setMapState(() {
-          searchError = 'Could not search for that location.';
-        });
-      } finally {
-        if (dialogOpen) setMapState(() => searching = false);
-      }
-    }
-
-    final LatLng? pickedResult = await showDialog<LatLng>(
-      context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setMapState) {
-            return Dialog.fullscreen(
-              child: Scaffold(
-                appBar: AppBar(
-                  title: const Text(
-                    'Choose Incident Location',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  backgroundColor: Colors.white,
-                  leading: IconButton(
-                    icon: const Icon(Icons.close, color: Color(0xFF0F172A)),
-                    onPressed: () => Navigator.of(dialogCtx).pop(),
-                  ),
-                  actions: [
-                    TextButton.icon(
-                      onPressed: tempHasPin
-                          ? () => Navigator.of(dialogCtx).pop(tempPicked)
-                          : null,
-                      icon: const Icon(
-                        Icons.check_circle_rounded,
-                        color: Color(0xFF1E3A8A),
-                      ),
-                      label: const Text(
-                        'Confirm Location',
-                        style: TextStyle(
-                          color: Color(0xFF1E3A8A),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                body: Stack(
-                  children: [
-                    GoogleMap(
-                      initialCameraPosition: CameraPosition(
-                        target: tempPicked,
-                        zoom: 16,
-                      ),
-                      onMapCreated: (controller) {
-                        expandedMapController = controller;
-                      },
-                      onTap: (point) {
-                        FocusScope.of(context).unfocus();
-                        setMapState(() {
-                          tempPicked = point;
-                          tempHasPin = true;
-                          searchError = null;
-                        });
-                      },
-                      markers: tempHasPin
-                          ? {
-                              Marker(
-                                markerId: const MarkerId('incident-pin'),
-                                position: tempPicked,
-                              ),
-                            }
-                          : const <Marker>{},
-                      compassEnabled: true,
-                      zoomControlsEnabled: true,
-                      zoomGesturesEnabled: true,
-                      rotateGesturesEnabled: true,
-                      scrollGesturesEnabled: true,
-                      myLocationEnabled: _locationPermissionGranted,
-                      myLocationButtonEnabled: _locationPermissionGranted,
-                      mapToolbarEnabled: false,
-                      padding: const EdgeInsets.only(top: 86, bottom: 100),
-                    ),
-                    Positioned(
-                      top: 14,
-                      left: 14,
-                      right: 14,
-                      child: Material(
-                        elevation: 5,
-                        borderRadius: BorderRadius.circular(14),
-                        color: Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
-                          child: TextField(
-                            controller: searchController,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) => searchLocation(setMapState),
-                            decoration: InputDecoration(
-                              hintText: 'Search address or landmark',
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                color: Color(0xFF1E3A8A),
-                              ),
-                              suffixIcon: searching
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(14),
-                                      child: SizedBox.square(
-                                        dimension: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  : IconButton(
-                                      tooltip: 'Search location',
-                                      onPressed: () =>
-                                          searchLocation(setMapState),
-                                      icon: const Icon(
-                                        Icons.arrow_forward_rounded,
-                                      ),
-                                    ),
-                              border: InputBorder.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (searchError != null)
-                      Positioned(
-                        top: 82,
-                        left: 18,
-                        right: 18,
-                        child: Material(
-                          color: const Color(0xFFFFF7ED),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Text(
-                              searchError!,
-                              style: const TextStyle(
-                                color: Color(0xFF9A3412),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    Positioned(
-                      bottom: 24,
-                      left: 16,
-                      right: 16,
-                      child: Card(
-                        elevation: 4,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(
-                                    Icons.touch_app_rounded,
-                                    color: Color(0xFF1E3A8A),
-                                    size: 18,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Tap map to update pin position',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Move the pin, then confirm this location.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    final pickedResult = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => IncidentLocationPickerPage(
+          initialLocation: _selectedLatLng,
+          hasInitialPin: _hasLocationPin,
+          myLocationEnabled: _locationPermissionGranted,
+        ),
+      ),
     );
 
-    dialogOpen = false;
-    // GoogleMap owns the lifecycle of its platform-view controller. Disposing
-    // it here races with the dialog route teardown and can trigger Flutter's
-    // `_dependents.isEmpty` assertion when the map is removed.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      searchController.dispose();
-    });
-
-    if (pickedResult != null) {
+    if (mounted && pickedResult != null) {
       _updatePinnedLocation(pickedResult);
     }
   }
