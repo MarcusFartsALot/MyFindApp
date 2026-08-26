@@ -230,6 +230,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
   final _locationSearchController = TextEditingController();
   final _insightsSheetController = DraggableScrollableController();
   Timer? _locationSearchDebounce;
+  Timer? _riskRefreshDebounce;
+  RealtimeChannel? _riskReportsChannel;
   GoogleMapController? _mapController;
   List<_RiskReport> _validatedReports = const [];
   List<_RiskZone> _zones = const [];
@@ -254,17 +256,40 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     _insightsSheetController.addListener(_handleInsightsSheetChanged);
     _prepareZoneImages();
     _loadRiskData();
+    _listenForRiskReportChanges();
   }
 
   @override
   void dispose() {
     _locationSearchDebounce?.cancel();
+    _riskRefreshDebounce?.cancel();
+    final riskReportsChannel = _riskReportsChannel;
+    if (riskReportsChannel != null) {
+      _supabase.removeChannel(riskReportsChannel);
+    }
     _insightsSheetController
       ..removeListener(_handleInsightsSheetChanged)
       ..dispose();
     _locationSearchController.dispose();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  void _listenForRiskReportChanges() {
+    _riskReportsChannel = _supabase
+        .channel('m300-public-risk-map')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'incident_reports',
+          callback: (_) {
+            _riskRefreshDebounce?.cancel();
+            _riskRefreshDebounce = Timer(const Duration(milliseconds: 500), () {
+              if (mounted) _loadRiskData(showLoading: false);
+            });
+          },
+        )
+        .subscribe();
   }
 
   void _handleInsightsSheetChanged() {
@@ -536,8 +561,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     );
   }
 
-  Future<void> _loadRiskData() async {
-    if (mounted) {
+  Future<void> _loadRiskData({bool showLoading = true}) async {
+    if (mounted && showLoading) {
       setState(() {
         _loading = true;
         _error = null;
@@ -574,10 +599,12 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _error = 'Unable to load validated risk data. Pull down to retry.';
-        _loading = false;
-      });
+      if (showLoading) {
+        setState(() {
+          _error = 'Unable to load validated risk data. Pull down to retry.';
+          _loading = false;
+        });
+      }
       debugPrint('Risk map load error: $error');
     }
   }

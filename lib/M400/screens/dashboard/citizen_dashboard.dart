@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -414,63 +416,250 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
   }
 }
 
-/// Dynamic Notification Bell with Real-Time Unread Indicator
-class _DynamicNotificationBell extends StatelessWidget {
+/// Keeps the unread badge live and surfaces newly-arrived administrative
+/// alerts as an in-app MyFind dialog while the citizen is using the app.
+class _DynamicNotificationBell extends StatefulWidget {
   final ProfileModel profile;
 
   const _DynamicNotificationBell({required this.profile});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      // Listen to real-time changes in notifications table for current user
-      stream: Supabase.instance.client
-          .from('notifications')
-          .stream(primaryKey: ['id'])
-          .eq('user_id', profile.id),
-      builder: (context, snapshot) {
-        final notifications = snapshot.data ?? [];
-        // Detect if any notification is unread
-        final bool hasUnread = notifications.any(
-          (item) => item['is_read'] == false,
-        );
+  State<_DynamicNotificationBell> createState() =>
+      _DynamicNotificationBellState();
+}
 
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(
-                Icons.notifications_outlined,
-                color: Color(0xFF0F172A),
-                size: 22,
-              ),
-              tooltip: 'Notifications',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => NotificationsScreen(profile: profile),
-                  ),
-                );
-              },
-            ),
-            // Unread Red Dot Badge
-            if (hasUnread)
-              Positioned(
-                right: 10,
-                bottom: 12,
-                child: Container(
-                  width: 9,
-                  height: 9,
+class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
+  final _supabase = Supabase.instance.client;
+  final List<Map<String, dynamic>> _pendingPopups = [];
+  final Set<String> _knownNotificationIds = {};
+  StreamSubscription<List<Map<String, dynamic>>>? _subscription;
+  List<Map<String, dynamic>> _notifications = const [];
+  bool _receivedInitialSnapshot = false;
+  bool _showingPopup = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToNotifications();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DynamicNotificationBell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.id != widget.profile.id) {
+      _subscription?.cancel();
+      _knownNotificationIds.clear();
+      _pendingPopups.clear();
+      _notifications = const [];
+      _receivedInitialSnapshot = false;
+      _subscribeToNotifications();
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToNotifications() {
+    _subscription = _supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', widget.profile.id)
+        .listen(
+          _handleNotificationSnapshot,
+          onError: (Object error) {
+            debugPrint('Citizen notification stream error: $error');
+          },
+        );
+  }
+
+  void _handleNotificationSnapshot(List<Map<String, dynamic>> data) {
+    final notifications = List<Map<String, dynamic>>.from(data)
+      ..sort((a, b) {
+        final first = DateTime.tryParse(a['created_at']?.toString() ?? '');
+        final second = DateTime.tryParse(b['created_at']?.toString() ?? '');
+        return (second ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+          first ?? DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      });
+
+    if (!_receivedInitialSnapshot) {
+      _receivedInitialSnapshot = true;
+      _knownNotificationIds.addAll(
+        notifications.map((item) => item['id']?.toString() ?? ''),
+      );
+    } else {
+      final newAlerts = notifications.where((item) {
+        final id = item['id']?.toString() ?? '';
+        return id.isNotEmpty &&
+            !_knownNotificationIds.contains(id) &&
+            item['is_read'] == false &&
+            item['type'] == 'Alert';
+      }).toList();
+
+      _knownNotificationIds.addAll(
+        notifications.map((item) => item['id']?.toString() ?? ''),
+      );
+      _pendingPopups.addAll(newAlerts.reversed);
+    }
+
+    if (mounted) {
+      setState(() => _notifications = notifications);
+      _showNextPopup();
+    }
+  }
+
+  Future<void> _showNextPopup() async {
+    if (_showingPopup || _pendingPopups.isEmpty || !mounted) return;
+    _showingPopup = true;
+    final notification = _pendingPopups.removeAt(0);
+    final title = notification['title']?.toString() ?? 'Report update';
+    final message =
+        notification['message']?.toString() ??
+        'There is a new update to one of your reports.';
+    final isRejected = title.toLowerCase().contains('reject');
+    final accent = isRejected
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF15803D);
+    final icon = isRejected ? Icons.cancel_rounded : Icons.verified_rounded;
+
+    final openNotifications = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDC2626), // Red dot
+                    color: accent.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: Icon(icon, color: accent, size: 34),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-          ],
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    icon: const Icon(Icons.notifications_active_rounded),
+                    label: const Text('View notifications'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A8A),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Later'),
+                ),
+              ],
+            ),
+          ),
         );
       },
+    );
+
+    if (openNotifications == true && mounted) {
+      await _markAsRead(notification);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NotificationsScreen(profile: widget.profile),
+        ),
+      );
+    }
+
+    _showingPopup = false;
+    if (mounted && _pendingPopups.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNextPopup());
+    }
+  }
+
+  Future<void> _markAsRead(Map<String, dynamic> notification) async {
+    final id = notification['id'];
+    if (id == null) return;
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('id', id)
+          .eq('user_id', widget.profile.id);
+    } catch (error) {
+      debugPrint('Could not mark popup notification as read: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUnread = _notifications.any((item) => item['is_read'] == false);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(
+            Icons.notifications_outlined,
+            color: Color(0xFF0F172A),
+            size: 22,
+          ),
+          tooltip: 'Notifications',
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NotificationsScreen(profile: widget.profile),
+              ),
+            );
+          },
+        ),
+        if (hasUnread)
+          Positioned(
+            right: 10,
+            bottom: 12,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDC2626),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
