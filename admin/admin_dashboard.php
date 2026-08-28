@@ -250,7 +250,7 @@ render_admin_start(
 /* Card Grid - 4 cards */
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 16px;
 }
 
@@ -1017,6 +1017,17 @@ render_admin_start(
                 <div class="sub">Review incident reports</div>
             </div>
         </a>
+
+         <!-- Card 5: Visa Approval & Monitor (M500) -->
+                <a class="metric-card" href="visa_management.php">
+                    <div class="card-icon" style="background:#dbeafe;color:#1E3A8A;">
+                        <i class='bx bx-time'></i>
+                    </div>
+                    <div class="card-content">
+                        <strong>Visa Approval &amp; Monitor</strong>
+                        <div class="sub">Temporal status tracker</div>
+                    </div>
+                </a>
     </section>
 
     <!-- ============================================================

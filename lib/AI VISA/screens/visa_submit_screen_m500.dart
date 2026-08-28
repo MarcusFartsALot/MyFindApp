@@ -22,13 +22,13 @@ extension SubmissionStatusExtension on SubmissionStatus {
   String get displayName {
     switch (this) {
       case SubmissionStatus.pending:
-        return '⏳ Pending';
+        return 'Pending';
       case SubmissionStatus.underReview:
-        return '🔍 Under Review';
+        return 'Under Review';
       case SubmissionStatus.approved:
-        return '✅ Approved';
+        return 'Approved';
       case SubmissionStatus.rejected:
-        return '❌ Rejected';
+        return 'Rejected';
     }
   }
 
@@ -42,19 +42,6 @@ extension SubmissionStatusExtension on SubmissionStatus {
         return const Color(0xFF16A34A);
       case SubmissionStatus.rejected:
         return const Color(0xFFDC2626);
-    }
-  }
-
-  IconData get icon {
-    switch (this) {
-      case SubmissionStatus.pending:
-        return Icons.hourglass_top;
-      case SubmissionStatus.underReview:
-        return Icons.search;
-      case SubmissionStatus.approved:
-        return Icons.check_circle;
-      case SubmissionStatus.rejected:
-        return Icons.cancel;
     }
   }
 }
@@ -71,6 +58,7 @@ class VisaSubmission {
   final String purposeOfVisit;
   final String arrivalDate;
   final String departureDate;
+  final String visaType; // 🆕 SEV / MEV
   final DateTime submittedAt;
   final SubmissionStatus status;
   final String? pdfUrl;
@@ -86,6 +74,7 @@ class VisaSubmission {
     required this.purposeOfVisit,
     required this.arrivalDate,
     required this.departureDate,
+    required this.visaType,
     required this.submittedAt,
     required this.status,
     this.pdfUrl,
@@ -104,6 +93,7 @@ class VisaSubmission {
       purposeOfVisit: json['purpose_of_visit'] ?? '',
       arrivalDate: json['arrival_date'] ?? '',
       departureDate: json['departure_date'] ?? '',
+      visaType: json['visa_type'] ?? 'SEV', // 🆕
       submittedAt: json['submitted_at'] != null
           ? DateTime.parse(json['submitted_at'])
           : DateTime.now(),
@@ -147,6 +137,9 @@ class VisaSubmitScreenM500 extends StatefulWidget {
 
 class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
   final _supabase = Supabase.instance.client;
+
+  // ===== 签证类型 =====
+  String _visaType = 'SEV'; // 'SEV' 或 'MEV' 🆕
 
   // ===== 提取的信息 =====
   String _fullName = '';
@@ -318,7 +311,6 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
     }
 
     try {
-      // 如果是存储路径，生成签名 URL
       String displayUrl = pdfUrl;
       if (!pdfUrl.startsWith('http')) {
         final bucket = 'visa-documents';
@@ -369,6 +361,7 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
       final referenceId =
           'TCK-${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 8).toUpperCase()}';
 
+      // 🆕 保存 visa_type
       await _supabase.from('visa_submissions').insert({
         'profile_id': profileId,
         'reference_id': referenceId,
@@ -378,25 +371,25 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
         'purpose_of_visit': _purposeOfVisit,
         'arrival_date': _arrivalDate,
         'departure_date': _departureDate,
+        'visa_type': _visaType, // 🆕
         'pdf_url': _uploadedPdfUrl,
         'pdf_file_name': _selectedPdfFileName,
         'status': 'pending',
         'submitted_at': DateTime.now().toIso8601String(),
       });
 
-      // 插入通知
+      // 🆕 插入通知（包含签证类型）
       try {
         await _supabase.from('notifications').insert({
           'user_id': profileId,
           'title': 'Visa Submitted',
-          'message': 'Your visa application ($referenceId) has been submitted for admin approval.',
+          'message': 'Your $_visaType visa application ($referenceId) has been submitted for admin approval.',
           'type': 'Activity',
         });
       } catch (e) {
         // 忽略通知错误
       }
 
-      // 刷新列表
       await _loadSubmissions();
 
       setState(() {
@@ -413,6 +406,7 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
         _arrivalDate = '';
         _departureDate = '';
         _uploadedPdfUrl = '';
+        _visaType = 'SEV'; // 重置
       });
 
       _showSnackBar(
@@ -448,7 +442,7 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
   }
 
   // ============================================================
-  // 构建
+  // 构建方法
   // ============================================================
   @override
   Widget build(BuildContext context) {
@@ -489,6 +483,40 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
           : ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          // ===== 签证类型选择 🆕 =====
+          const Text(
+            'Visa Type',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Select Single Entry (SEV) or Multiple Entry (MEV) for your travel purpose.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 16),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildVisaTypeOption('SEV', 'Single Entry', Icons.arrow_forward),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildVisaTypeOption('MEV', 'Multiple Entry', Icons.arrow_outward),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
           // ===== 上传区域 =====
           const Text(
             'Upload Visa Document',
@@ -499,11 +527,13 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
             'Select a PDF document. Information will be automatically extracted.',
             style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _hasUploadedPdf
                     ? const Color(0xFF16A34A)
@@ -512,12 +542,6 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
                     : const Color(0xFFE2E8F0)),
                 width: _hasUploadedPdf ? 2 : 1.5,
               ),
-              borderRadius: BorderRadius.circular(12),
-              color: _hasUploadedPdf
-                  ? const Color(0xFFF0FDF4)
-                  : (_selectedPdfFile != null || _selectedPdfBytes != null
-                  ? const Color(0xFFEFF6FF)
-                  : const Color(0xFFF8FAFC)),
             ),
             child: Row(
               children: [
@@ -654,7 +678,7 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
@@ -741,6 +765,50 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
   }
 
   // ============================================================
+  // 签证类型选项 🆕
+  // ============================================================
+  Widget _buildVisaTypeOption(String value, String label, IconData icon) {
+    final isSelected = _visaType == value;
+    return GestureDetector(
+      onTap: () => setState(() => _visaType = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E3A8A) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1E3A8A) : const Color(0xFFE2E8F0),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: isSelected ? Colors.white : const Color(0xFF64748B), size: 18),
+            const SizedBox(width: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: isSelected ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isSelected ? Colors.white70 : const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
   // 提取信息行
   // ============================================================
   Widget _buildExtractedInfoRow(String label, String value) {
@@ -773,36 +841,29 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
   }
 
   // ============================================================
-  // 状态标签
+  // 状态标签 - 蓝白简约版
   // ============================================================
   Widget _buildStatusChip(SubmissionStatus status) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: status.color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: status.color.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(status.icon, size: 14, color: status.color),
-          const SizedBox(width: 4),
-          Text(
-            status.displayName,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
-              color: status.color,
-            ),
-          ),
-        ],
+      child: Text(
+        status.displayName,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: status.color,
+        ),
       ),
     );
   }
 
   // ============================================================
-  // 提交卡片
+  // 提交卡片 - 蓝白简约版
   // ============================================================
   Widget _buildSubmissionCard(VisaSubmission submission) {
     return Container(
@@ -810,37 +871,16 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: submission.status.color.withOpacity(0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: submission.status.color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  submission.status.icon,
-                  color: submission.status.color,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
+              _buildStatusChip(submission.status),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,45 +900,59 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
                   ],
                 ),
               ),
-              _buildStatusChip(submission.status),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'Purpose: ${submission.purposeOfVisit}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  submission.visaType,
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${submission.purposeOfVisit} · ${submission.arrivalDate} → ${submission.departureDate}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ),
+            ],
           ),
-          Text(
-            'Arrival: ${submission.arrivalDate} · Departure: ${submission.departureDate}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          ),
-          if (submission.adminNote != null && submission.adminNote!.isNotEmpty)
+          if (submission.adminNote != null && submission.adminNote!.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
               '📝 ${submission.adminNote}',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
             ),
-          const SizedBox(height: 8),
-          if (submission.pdfFileName != null)
+          ],
+          if (submission.pdfFileName != null) ...[
+            const SizedBox(height: 8),
             GestureDetector(
               onTap: () => _viewPDF(submission.pdfUrl, submission.pdfFileName),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFCA5A5)),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF1E3A8A), width: 1),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.picture_as_pdf, size: 16, color: Color(0xFFDC2626)),
+                    const Icon(Icons.picture_as_pdf, size: 14, color: Color(0xFF1E3A8A)),
                     const SizedBox(width: 6),
                     Text(
                       submission.pdfFileName!,
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF1E3A8A),
-                        decoration: TextDecoration.underline,
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -907,6 +961,7 @@ class _VisaSubmitScreenM500State extends State<VisaSubmitScreenM500> {
                 ),
               ),
             ),
+          ],
         ],
       ),
     );
