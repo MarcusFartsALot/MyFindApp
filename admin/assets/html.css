@@ -2,8 +2,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700&display=swap');
 
 :root {
-    --sidebar: #11101d;
-    --sidebar-soft: #1d1b31;
+    --sidebar: #0a1628;
+    --sidebar-soft: #0f2847;
+    --sidebar-hover: #1a3a6b;
+    --sidebar-active: #1e4d8c;
     --background: #e4e9f7;
     --surface: #ffffff;
     --border: #dfe3ee;
@@ -177,8 +179,21 @@ button, input, textarea { font: inherit; }
     background: var(--sidebar);
 }
 
-.sidebar li a:hover,
-.sidebar li.active a { background: #fff; }
+.sidebar li a:hover {
+    background: var(--sidebar-hover);
+}
+
+.sidebar li.active a {
+    background: var(--sidebar-active);
+}
+
+.sidebar li a:hover .links_name,
+.sidebar li a:hover i,
+.sidebar li.active a .links_name,
+.sidebar li.active a i {
+    transition: all .5s ease;
+    color: #fff;
+}
 
 .sidebar li a .links_name {
     color: #fff;
@@ -193,14 +208,6 @@ button, input, textarea { font: inherit; }
 .sidebar.open li a .links_name {
     opacity: 1;
     pointer-events: auto;
-}
-
-.sidebar li a:hover .links_name,
-.sidebar li a:hover i,
-.sidebar li.active a .links_name,
-.sidebar li.active a i {
-    transition: all .5s ease;
-    color: var(--sidebar);
 }
 
 .sidebar li i {
@@ -410,6 +417,9 @@ td small { color: var(--muted); }
 .reject-form { display: grid; gap: 9px; }
 .reject-form textarea { width: 100%; resize: vertical; }
 
+/* ============================================================
+   LOGIN PAGE - DARK BLUE BACKGROUND
+============================================================ */
 .login-page {
     position: relative;
     display: flex;
@@ -417,16 +427,16 @@ td small { color: var(--muted); }
     justify-content: center;
     overflow-x: hidden;
     padding: 42px 24px;
-    background: #0d0c18;
+    background: #0a1628;
 }
 
 .login-page-background {
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(circle at 14% 18%, rgba(80, 70, 229, .38), transparent 32%),
-        radial-gradient(circle at 88% 78%, rgba(37, 99, 235, .28), transparent 34%),
-        linear-gradient(135deg, #0c0b16 0%, #18152c 50%, #0f172a 100%);
+        radial-gradient(circle at 14% 18%, rgba(37, 99, 235, .35), transparent 32%),
+        radial-gradient(circle at 88% 78%, rgba(30, 77, 140, .30), transparent 34%),
+        radial-gradient(circle at 50% 50%, rgba(15, 40, 71, .80), #0a1628 100%);
 }
 
 .login-page-background::before,
@@ -474,9 +484,9 @@ td small { color: var(--muted); }
     padding: 46px 44px;
     color: #fff;
     background:
-        linear-gradient(155deg, rgba(17, 16, 29, .5), rgba(23, 30, 73, .88)),
-        radial-gradient(circle at 20% 20%, #5b5ce2, transparent 48%),
-        linear-gradient(145deg, #312e81, #11101d);
+        linear-gradient(155deg, rgba(10, 22, 40, .5), rgba(15, 40, 71, .88)),
+        radial-gradient(circle at 20% 20%, #1a4a8a, transparent 48%),
+        linear-gradient(145deg, #0f2847, #0a1628);
 }
 
 .admin-login-welcome::before {
@@ -537,7 +547,7 @@ td small { color: var(--muted); }
 .admin-welcome-label {
     display: inline-block;
     margin-bottom: 13px;
-    color: #c7d2fe;
+    color: #a8c8f0;
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .14em;
@@ -572,7 +582,7 @@ td small { color: var(--muted); }
 }
 
 .admin-security-note > i {
-    color: #c7d2fe;
+    color: #a8c8f0;
     font-size: 26px;
 }
 

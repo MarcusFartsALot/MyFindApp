@@ -15,24 +15,12 @@ function render_sidebar(array $admin, string $active): void
             <i class='bx bx-menu' id="btn" role="button" tabindex="0" aria-label="Toggle sidebar"></i>
         </div>
         <ul class="nav-list">
-            <li>
-                <i class='bx bx-search' id="sidebar-search"></i>
-                <input type="text" placeholder="Search..." aria-label="Search navigation">
-                <span class="tooltip">Search</span>
-            </li>
             <li class="<?= $active === 'dashboard' ? 'active' : '' ?>">
                 <a href="admin_dashboard.php">
                     <i class='bx bx-grid-alt'></i>
                     <span class="links_name">Dashboard</span>
                 </a>
                 <span class="tooltip">Dashboard</span>
-            </li>
-            <li class="<?= $active === 'admin_management' ? 'active' : '' ?>">
-                <a href="admin_management.php">
-                    <i class='bx bx-user'></i>
-                    <span class="links_name">Admins</span>
-                </a>
-                <span class="tooltip">Admins</span>
             </li>
             <li class="<?= $active === 'profile' ? 'active' : '' ?>">
                 <a href="profile.php">

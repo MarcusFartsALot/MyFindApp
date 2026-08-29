@@ -386,32 +386,11 @@ final class ApplicationService
     }
 
     // ============================================================
-    // ADMIN PROFILE METHODS
+    // PROFILE METHODS (for admin profile settings)
     // ============================================================
 
     /**
-     * Get admin profile by auth ID
-     * 
-     * @param string $authId The auth user ID
-     * @return array<string, mixed>|null
-     */
-    public function getAdminProfile(string $authId): ?array
-    {
-        try {
-            $profiles = $this->client->asService(
-                'GET',
-                '/rest/v1/profiles?select=*&auth_id=eq.' . rawurlencode($authId) . '&limit=1'
-            );
-            
-            return (is_array($profiles) && count($profiles) > 0) ? $profiles[0] : null;
-        } catch (Throwable $e) {
-            error_log('Get admin profile error: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Get admin by profile ID
+     * Get admin profile by ID
      * 
      * @param string $profileId The admin profile ID
      * @return array<string, mixed>|null
@@ -432,24 +411,45 @@ final class ApplicationService
     }
 
     /**
-     * Update admin password via Supabase Auth
+     * Update admin profile information (full_name, phone_number, nationality)
      * 
-     * @param string $authId The auth user ID
-     * @param string $newPassword New password
+     * @param string $profileId The admin profile ID
+     * @param array<string, string> $data Profile data (full_name, phone_number, nationality)
      * @return bool
      */
-    public function updateAdminPassword(string $authId, string $newPassword): bool
+    public function updateAdminProfile(string $profileId, array $data): bool
     {
         try {
-            $this->client->asService(
-                'PUT',
-                '/auth/v1/admin/users/' . rawurlencode($authId),
-                ['password' => $newPassword]
+            $updateData = [];
+            $allowedFields = ['full_name', 'phone_number', 'nationality'];
+
+            foreach ($allowedFields as $field) {
+                if (array_key_exists($field, $data)) {
+                    $value = trim((string) $data[$field]);
+                    if ($value === '') {
+                        throw new RuntimeException(ucfirst(str_replace('_', ' ', $field)) . ' cannot be empty.');
+                    }
+                    $updateData[$field] = $value;
+                }
+            }
+
+            if (empty($updateData)) {
+                return false;
+            }
+
+            $updateData['updated_at'] = gmdate('c');
+
+            $result = $this->client->asService(
+                'PATCH',
+                '/rest/v1/profiles?id=eq.' . rawurlencode($profileId),
+                $updateData,
+                ['Prefer: return=representation']
             );
-            return true;
+
+            return isset($result[0]);
         } catch (Throwable $e) {
-            error_log('Update admin password error: ' . $e->getMessage());
-            return false;
+            error_log('Update admin profile error: ' . $e->getMessage());
+            throw $e;
         }
     }
 
@@ -498,50 +498,6 @@ final class ApplicationService
     }
 
     /**
-     * Update admin profile information (full_name, phone_number, nationality)
-     * 
-     * @param string $profileId The admin profile ID
-     * @param array<string, string> $data Profile data (full_name, phone_number, nationality)
-     * @return bool
-     */
-    public function updateAdminProfile(string $profileId, array $data): bool
-    {
-        try {
-            $updateData = [];
-            // ✅ 使用正确的数据库字段名
-            $allowedFields = ['full_name', 'phone_number', 'nationality'];
-
-            foreach ($allowedFields as $field) {
-                if (array_key_exists($field, $data)) {
-                    $value = trim((string) $data[$field]);
-                    if ($value === '') {
-                        throw new RuntimeException(ucfirst(str_replace('_', ' ', $field)) . ' cannot be empty.');
-                    }
-                    $updateData[$field] = $value;
-                }
-            }
-
-            if (empty($updateData)) {
-                return false;
-            }
-
-            $updateData['updated_at'] = gmdate('c');
-
-            $result = $this->client->asService(
-                'PATCH',
-                '/rest/v1/profiles?id=eq.' . rawurlencode($profileId),
-                $updateData,
-                ['Prefer: return=representation']
-            );
-
-            return isset($result[0]);
-        } catch (Throwable $e) {
-            error_log('Update admin profile error: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    /**
      * Upload admin profile image to Supabase Storage
      * 
      * @param string $profileId The admin profile ID
@@ -575,7 +531,6 @@ final class ApplicationService
             // Use the 'admin' bucket
             $bucket = 'admin';
             
-            // ✅ 直接放在 profiles 目录下
             $encodedFilename = rawurlencode($filename);
             $path = 'profiles/' . $encodedFilename;
             
@@ -584,12 +539,7 @@ final class ApplicationService
                 throw new RuntimeException('Failed to read uploaded file.');
             }
 
-            // DIRECT URL - NO /rest/v1
             $url = $supabaseUrl . '/storage/v1/object/' . $bucket . '/' . $path;
-
-            error_log('=== UPLOAD DEBUG ===');
-            error_log('SUPABASE_URL: ' . $supabaseUrl);
-            error_log('Upload URL: ' . $url);
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
@@ -608,18 +558,12 @@ final class ApplicationService
             $curlError = curl_error($ch);
             curl_close($ch);
 
-            error_log('HTTP Code: ' . $httpCode);
-            error_log('Response: ' . $response);
-            error_log('CURL Error: ' . $curlError);
-
             if ($httpCode !== 200 && $httpCode !== 201) {
                 $errorMsg = 'Storage upload failed with status: ' . $httpCode;
-                
                 $responseData = json_decode($response, true);
                 if (isset($responseData['message'])) {
                     $errorMsg .= ' - ' . $responseData['message'];
                 }
-                
                 throw new RuntimeException($errorMsg);
             }
 
@@ -685,11 +629,7 @@ final class ApplicationService
                 return true;
             }
 
-            // DIRECT URL - NO /rest/v1
             $url = $supabaseUrl . '/storage/v1/object/' . $bucket . '/' . $path;
-
-            error_log('=== DELETE DEBUG ===');
-            error_log('Delete URL: ' . $url);
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
@@ -704,10 +644,6 @@ final class ApplicationService
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlError = curl_error($ch);
             curl_close($ch);
-
-            error_log('Delete HTTP Code: ' . $httpCode);
-            error_log('Delete Response: ' . $response);
-            error_log('Delete CURL Error: ' . $curlError);
 
             if ($httpCode !== 200 && $httpCode !== 204 && $httpCode !== 404) {
                 error_log('Supabase delete error - HTTP: ' . $httpCode . ' Response: ' . $response);
@@ -731,174 +667,4 @@ final class ApplicationService
             return false;
         }
     }
-
-    /**
-     * Get all admins (for admin management)
-     * 
-     * @return list<array<string, mixed>>
-     */
-    public function getAllAdmins(): array
-    {
-        try {
-            $profiles = $this->client->asService(
-                'GET',
-                '/rest/v1/profiles?select=*&role=eq.admin'
-            );
-            return is_array($profiles) ? $profiles : [];
-        } catch (Throwable $e) {
-            error_log('Get all admins error: ' . $e->getMessage());
-            return [];
-        }
-    }
-
-    /**
-     * Get admin email by auth ID
-     * 
-     * @param string $authId The auth user ID
-     * @return string|null
-     */
-    public function getAdminEmailByAuthId(string $authId): ?string
-    {
-        try {
-            $user = $this->client->asService(
-                'GET',
-                '/auth/v1/admin/users/' . rawurlencode($authId)
-            );
-            return $user['email'] ?? null;
-        } catch (Throwable $e) {
-            error_log('Get admin email error: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Remove an admin
-     * 
-     * @param string $profileId Admin profile ID to remove
-     * @param string $currentAdminId Current admin ID (to prevent self-deletion)
-     * @return bool
-     */
-    public function removeAdmin(string $profileId, string $currentAdminId): bool
-    {
-        try {
-            // Prevent self-deletion
-            if ($profileId === $currentAdminId) {
-                throw new RuntimeException('You cannot remove your own admin account.');
-            }
-
-            // Get admin details
-            $admin = $this->getAdminById($profileId);
-            if (!$admin || ($admin['role'] ?? '') !== 'admin') {
-                throw new RuntimeException('Admin not found.');
-            }
-
-            $authId = $admin['auth_id'] ?? null;
-            if (!$authId) {
-                throw new RuntimeException('Admin has no associated auth account.');
-            }
-
-            // Delete profile
-            $this->client->asService(
-                'DELETE',
-                '/rest/v1/profiles?id=eq.' . rawurlencode($profileId)
-            );
-
-            // Delete auth user
-            $this->client->asService(
-                'DELETE',
-                '/auth/v1/admin/users/' . rawurlencode($authId)
-            );
-
-            return true;
-        } catch (Throwable $e) {
-            error_log('Remove admin error: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
-    /**
-     * Add a new admin with a specific password (set by current admin)
-     * 
-     * @param string $email Admin email
-     * @param string $fullName Admin full name
-     * @param string $password Admin password (plain text, will be hashed by Supabase)
-     * @param string $invitedBy Current admin ID who invited this admin
-     * @return bool
-     * @throws RuntimeException
-     */
-    public function addAdminWithPassword(string $email, string $fullName, string $password, string $invitedBy): bool
-    {
-        try {
-            // 1. Check if email already exists in profiles
-            $existing = $this->client->asService(
-                'GET',
-                '/rest/v1/profiles?select=id&email=eq.' . rawurlencode(strtolower(trim($email)))
-            );
-            
-            if (is_array($existing) && count($existing) > 0) {
-                throw new RuntimeException('This email is already registered in the system.');
-            }
-
-            // 2. Create auth user with the provided password
-            $createdUser = $this->client->asService(
-                'POST',
-                '/auth/v1/admin/users',
-                [
-                    'email' => strtolower(trim($email)),
-                    'password' => $password,
-                    'email_confirm' => true,
-                    'user_metadata' => [
-                        'full_name' => trim($fullName),
-                        'role' => 'admin',
-                        'module' => 'M400',
-                    ],
-                ]
-            );
-
-            // Extract auth user ID
-            $authUserId = null;
-            if (is_array($createdUser)) {
-                $authUserId = $createdUser['id'] ?? $createdUser['user']['id'] ?? null;
-            }
-            
-            if (!$authUserId) {
-                throw new RuntimeException('Failed to create admin account. Please try again.');
-            }
-
-            // 3. Create profile record
-            $result = $this->client->asService(
-                'POST',
-                '/rest/v1/profiles',
-                [
-                    'auth_id' => $authUserId,
-                    'email' => strtolower(trim($email)),
-                    'full_name' => trim($fullName),
-                    'role' => 'admin',
-                    'created_at' => gmdate('c'),
-                    'updated_at' => gmdate('c'),
-                ],
-                ['Prefer: return=representation']
-            );
-
-            if (is_array($result) && isset($result[0])) {
-                return true;
-            }
-
-            // If profile creation fails, delete the auth user
-            try {
-                $this->client->asService(
-                    'DELETE',
-                    '/auth/v1/admin/users/' . rawurlencode($authUserId)
-                );
-            } catch (Throwable $e) {
-                error_log('Failed to cleanup auth user after profile creation error: ' . $e->getMessage());
-            }
-
-            throw new RuntimeException('Failed to create admin profile. Please try again.');
-        } catch (Throwable $e) {
-            error_log('Add admin error: ' . $e->getMessage());
-            throw $e;
-        }
-    }
-
 }
