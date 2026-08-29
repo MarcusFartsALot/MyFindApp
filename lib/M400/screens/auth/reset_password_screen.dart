@@ -3,6 +3,8 @@ import 'package:my_find/core/validators/validators.dart';
 import 'package:my_find/M400/services/auth_service.dart';
 import 'package:my_find/M400/widgets/auth_ui.dart';
 
+import 'login_screen.dart';
+
 /// Reached through a Supabase password-recovery deep link.
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -51,6 +53,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       );
       if (!mounted) return;
       await _authService.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/login'),
+          builder: (_) => const LoginScreen(),
+        ),
+        (_) => false,
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
