@@ -143,7 +143,7 @@ function clear_admin_session(): void
             'domain' => $params['domain'],
             'secure' => $params['secure'],
             'httponly' => $params['httponly'],
-            'samesite' => 'Strict',
+            'samesite' => $params['samesite'] ?? 'Lax',
         ]);
     }
     session_regenerate_id(true);

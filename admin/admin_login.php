@@ -129,10 +129,16 @@ $sessionMessage = take_flash();
                 </div>
             </div>
 
-            <button type="submit" class="button primary admin-login-submit">
-                <span>Log In</span>
-                <i class='bx bx-right-arrow-alt' aria-hidden="true"></i>
-            </button>
+            <div class="admin-login-actions">
+                <a href="admin_forgot_password.php" class="admin-forgot-link">
+                    Forgot password?
+                </a>
+
+                <button type="submit" class="button primary admin-login-submit">
+                    <span>Log In</span>
+                    <i class='bx bx-right-arrow-alt' aria-hidden="true"></i>
+                </button>
+            </div>
         </form>
 
         <p class="admin-login-help">

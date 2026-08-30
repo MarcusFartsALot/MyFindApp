@@ -13,15 +13,65 @@ Flutter, JavaScript, HTML, or source control.
 
 ## Configure
 
-1. Copy `.env.example` to `.env` on the PHP server.
+1. Copy `admin/.env.example` to `.admin.env` in the project root. Secrets stay
+   outside the public `admin/` document root.
 2. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and the server-only
    `SUPABASE_SERVICE_ROLE_KEY`.
-3. Set `MAIL_FROM` and configure the host's mail transport only if rejection
+3. Set `ADMIN_PASSWORD_RESET_URL` to the exact public callback, for example
+   `http://localhost:8081/admin_reset_password.php` during local development.
+   Optionally set `ADMIN_RECOVERY_RATE_LIMIT_SECRET` to a separate long random
+   server-only value; otherwise the service-role key protects the anonymous
+   rate-limit identifiers. `SESSION_SAVE_PATH` may point to an existing private,
+   writable directory; by default the operating-system temp directory is used.
+4. In **Supabase Dashboard > Authentication > URL Configuration**, add that
+   exact callback to **Redirect URLs**. Keep the Flutter mobile deep link too.
+5. Set `MAIL_FROM` and configure the host's mail transport only if rejection
    notices must be delivered from PHP.
-4. Point the web server document root at `admin/`, or deny direct HTTP access to
+6. Point the web server document root at `admin/`, or deny direct HTTP access to
    `config/`, `includes/`, `services/`, `.env`, and `.env.example`. The included
    `config/.htaccess` protects `config/` on Apache, but server-level rules are
    still recommended.
+
+## Run locally
+
+From the project root, start the Administrator portal with the included
+security router:
+
+```powershell
+C:\xampp\php\php.exe -S localhost:8081 -t admin admin/router.php
+```
+
+Then open `http://localhost:8081/admin_login.php`. Do not run the portal with a
+plain `php -S localhost:8081` command from inside `admin/`: PHP's development
+server would otherwise make `.env` downloadable. Stop and restart any older
+local server using the command above.
+
+## Administrator password recovery
+
+The Login page links to `admin_forgot_password.php`. The portal sends a
+Supabase recovery email only when the submitted address belongs to a linked
+`profiles.role = admin` account, while always showing the same public response
+to prevent account enumeration.
+
+Recovery uses a PKCE authorization code. The email link must normally be opened
+in the same browser that requested it because the verifier remains in the
+HttpOnly PHP session. The callback exchanges the one-time code server-side,
+revalidates the Supabase user and Administrator profile, and creates a separate
+15-minute recovery session. It does not create a normal Admin Portal login
+session. After a successful password update, the portal requests a global
+Supabase sign-out before returning the user to `admin_login.php`.
+
+The PHP layer accepts at most three reset-link requests per normalized email in
+a rolling 24-hour period, includes a 60-second resend cooldown, and limits each
+source IP to 20 attempts per hour. Its shared local store contains only keyed
+hashes, never plaintext email addresses or IPs. Supabase's own Auth email limits
+still apply. If the portal is deployed on multiple PHP servers, configure a
+shared database or cache-backed limiter instead of relying on one server's
+temporary file.
+
+The shared Supabase Recovery email template should keep using
+`{{ .ConfirmationURL }}`. Hardcoding either the PHP callback or the Flutter deep
+link in that template would break the other client.
 
 ## First administrator
 
@@ -38,13 +88,13 @@ hashed password column to any public table.
 
 Approval creates a confirmed Supabase Auth user. The normalized IC number
 (12 digits without hyphens) or passport number (uppercase letters/numbers
-without spaces) is the temporary password. The mobile app forces the user to
-replace it at first login. The password exists only in Supabase Auth and is not
-stored in `profiles`, `citizens`, or `tourists`.
+without spaces) is the initial password. The mobile app lets the user change it
+later from Settings but does not force a first-login reset. The password exists
+only in Supabase Auth and is not stored in `profiles`, `citizens`, or `tourists`.
 
-This temporary credential contains personal information and is intentionally
-short-lived. For production, a random one-time password or verified email link
-is safer. Keep Supabase's service-role key on the PHP server only.
+This initial credential contains personal information and remains valid until
+the user changes it. For production, a random one-time password or verified
+email link is safer. Keep Supabase's service-role key on the PHP server only.
 
 ## Email delivery
 

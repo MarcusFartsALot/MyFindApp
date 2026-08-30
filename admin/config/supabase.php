@@ -22,7 +22,8 @@ final class SupabaseClient
 
     public function __construct()
     {
-        // Put values in admin/.env. Env::required receives variable NAMES.
+        // Put values in the project-root .admin.env file. Env::required
+        // receives variable NAMES, never URLs or key values.
         $configuredUrl = rtrim(Env::required('SUPABASE_URL'), '/');
         $this->url = preg_replace(
             '#/(?:rest|auth|storage)/v1$#',

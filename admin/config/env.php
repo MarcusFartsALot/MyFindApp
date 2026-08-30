@@ -17,7 +17,9 @@ final class Env
         $configuredPath = getenv('ADMIN_ENV_FILE');
         $path = is_string($configuredPath) && $configuredPath !== ''
             ? $configuredPath
-            : dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env';
+            // Keep secrets outside the public admin/ document root. This also
+            // protects local development if someone forgets the router once.
+            : dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . '.admin.env';
 
         if (is_file($path)) {
             $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);
