@@ -73,6 +73,14 @@ The shared Supabase Recovery email template should keep using
 `{{ .ConfirmationURL }}`. Hardcoding either the PHP callback or the Flutter deep
 link in that template would break the other client.
 
+Supabase's built-in SMTP service is best-effort and currently permits only a
+small project-wide number of Auth emails. Registration, confirmation, OTP, and
+password-recovery messages share that quota. Configure custom SMTP under
+**Authentication > Emails > SMTP Settings** when repeated or reliable delivery
+is required. The public form intentionally cannot confirm whether a particular
+email was sent because that would reveal which addresses are Administrator
+accounts; use Supabase Auth logs to distinguish `mail.send` from HTTP 429.
+
 ## First administrator
 
 Create the initial admin through the Supabase Dashboard or another trusted
