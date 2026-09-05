@@ -56,13 +56,13 @@ $metrics = [
     'total_reports' => 0,
     'red_zones' => 0,
     'orange_zones' => 0,
-    'green_zones' => 0,
+    'yellow_zones' => 0,
     'high_risk_reports' => 0,
     'medium_risk_reports' => 0,
     'low_risk_reports' => 0,
     'red_percentage' => 0,
     'orange_percentage' => 0,
-    'green_percentage' => 0,
+    'yellow_percentage' => 0,
 ];
 
 /*
@@ -70,10 +70,10 @@ $metrics = [
 | KL Bounds - Show only Kuala Lumpur area
 |--------------------------------------------------------------------------
 */
-define('KL_SOUTH', 3.02);
-define('KL_NORTH', 3.28);
-define('KL_WEST', 101.58);
-define('KL_EAST', 101.78);
+define('KL_SOUTH', 2.90);
+define('KL_NORTH', 3.35);
+define('KL_WEST', 101.50);
+define('KL_EAST', 101.85);
 
 /*
 |--------------------------------------------------------------------------
@@ -83,6 +83,8 @@ define('KL_EAST', 101.78);
 $reports = [];
 $zones = [];
 $validatedReports = [];
+$klReports = [];
+$outsideKlReports = [];
 
 try {
     // Get all reports
@@ -102,7 +104,7 @@ try {
         $allReports = [];
     }
     
-    // Filter Validated in PHP (case-insensitive, handle spaces)
+    // Filter Validated in PHP
     $reports = array_values(
         array_filter(
             $allReports,
@@ -116,19 +118,23 @@ try {
     // Save all validated reports for table display
     $validatedReports = $reports;
     
-    // Only keep reports with coordinates within map bounds (for map display)
-    $reportsForMap = array_filter(
-        $reports,
-        static function (array $report): bool {
-            $lat = (float)($report['latitude'] ?? 0);
-            $lng = (float)($report['longitude'] ?? 0);
-            if ($lat === 0.0 && $lng === 0.0) return false;
-            return $lat >= KL_SOUTH && $lat <= KL_NORTH &&
-                   $lng >= KL_WEST && $lng <= KL_EAST;
+    // Split reports into KL and outside KL
+    foreach ($reports as $report) {
+        $lat = (float)($report['latitude'] ?? 0);
+        $lng = (float)($report['longitude'] ?? 0);
+        
+        $inKl = ($lat >= KL_SOUTH && $lat <= KL_NORTH && 
+                 $lng >= KL_WEST && $lng <= KL_EAST);
+        
+        if ($inKl) {
+            $klReports[] = $report;
+        } else {
+            $outsideKlReports[] = $report;
         }
-    );
+    }
     
-    // Map uses filtered data
+    // Only use KL reports for the map
+    $reportsForMap = $klReports;
     $reports = array_values($reportsForMap);
     
     // FR2.5: Region Filtering - filter by region name (map data only)
@@ -146,17 +152,20 @@ try {
         );
     }
     
-    // Group by coordinates for map display
+    // Group by coordinates for map display (rounded to 5 decimals)
     $locationGroups = [];
     foreach ($reports as $report) {
         $lat = (float)($report['latitude'] ?? 0);
         $lng = (float)($report['longitude'] ?? 0);
-        $key = $lat . ',' . $lng;
+        
+        $roundedLat = round($lat, 5);
+        $roundedLng = round($lng, 5);
+        $key = $roundedLat . ',' . $roundedLng;
         
         if (!isset($locationGroups[$key])) {
             $locationGroups[$key] = [
-                'lat' => $lat,
-                'lng' => $lng,
+                'lat' => $roundedLat,
+                'lng' => $roundedLng,
                 'reports' => [],
                 'count' => 0
             ];
@@ -180,8 +189,8 @@ try {
             $metrics['orange_zones']++;
             $metrics['medium_risk_reports'] += $count;
         } else {
-            $riskLevel = 'Green';
-            $metrics['green_zones']++;
+            $riskLevel = 'Yellow';
+            $metrics['yellow_zones']++;
             $metrics['low_risk_reports'] += $count;
         }
         
@@ -246,7 +255,7 @@ try {
     if ($total > 0) {
         $metrics['red_percentage'] = round(($metrics['red_zones'] / $total) * 100, 1);
         $metrics['orange_percentage'] = round(($metrics['orange_zones'] / $total) * 100, 1);
-        $metrics['green_percentage'] = round(($metrics['green_zones'] / $total) * 100, 1);
+        $metrics['yellow_percentage'] = round(($metrics['yellow_zones'] / $total) * 100, 1);
     }
     
 } catch (Throwable $e) {
@@ -259,9 +268,7 @@ try {
 | FR1.11: Risk Analysis Report Generation
 |--------------------------------------------------------------------------
 */
-// ============================================================
 // Risk Analysis Data - For PDF Report
-// ============================================================
 
 // 1. Executive Summary Data
 $riskSummary = [
@@ -270,12 +277,12 @@ $riskSummary = [
     'has_critical_zones' => $metrics['red_zones'] > 0,
     'critical_zone_count' => $metrics['red_zones'],
     'orange_zone_count' => $metrics['orange_zones'],
-    'green_zone_count' => $metrics['green_zones'],
+    'yellow_zone_count' => $metrics['yellow_zones'],
     'status_message' => $metrics['red_zones'] > 0 
         ? '⚠️ ' . $metrics['red_zones'] . ' Red Zone(s) detected - Immediate action required!' 
         : ($metrics['orange_zones'] > 0 
             ? '🟠 ' . $metrics['orange_zones'] . ' Orange Zone(s) detected - Enhanced monitoring recommended.' 
-            : '✅ No high-risk zones detected. Risk status is stable.'),
+            : '🟡 ' . $metrics['yellow_zones'] . ' Yellow Zone(s) detected - Regular monitoring recommended.'),
     'overall_risk_level' => $metrics['red_zones'] > 0 ? 'High' : ($metrics['orange_zones'] > 0 ? 'Medium' : 'Low'),
 ];
 
@@ -310,9 +317,7 @@ foreach ($validatedReports as $report) {
     }
     $dateTrend[$date]++;
 }
-// Sort by date
 ksort($dateTrend);
-// Get last 30 days only
 $dateTrend = array_slice($dateTrend, -30, 30, true);
 
 // 5. Recommendations
@@ -329,8 +334,8 @@ if ($metrics['red_zones'] > 0) {
 if ($metrics['orange_zones'] > 0) {
     $recommendations[] = '🟠 Increase monitoring and patrol in ' . $metrics['orange_zones'] . ' Orange Zone(s)';
 }
-if ($metrics['green_zones'] > 0 && $metrics['red_zones'] == 0) {
-    $recommendations[] = '🟢 Maintain regular monitoring of Green Zones';
+if ($metrics['yellow_zones'] > 0 && $metrics['red_zones'] == 0) {
+    $recommendations[] = '🟡 Maintain regular monitoring of Yellow Zones';
 }
 $recommendations[] = '📊 Conduct weekly risk map reviews to track trend changes';
 $recommendations[] = '📱 Ensure citizen reporting channels remain open and responsive';
@@ -347,11 +352,11 @@ $riskDistribution = [
         'reports' => $metrics['medium_risk_reports'],
         'percentage' => $metrics['orange_percentage']
     ],
-    'green' => [
-        'zones' => $metrics['green_zones'],
+    'yellow' => [
+        'zones' => $metrics['yellow_zones'],
         'reports' => $metrics['low_risk_reports'],
-        'percentage' => $metrics['green_percentage']
-    ]
+        'percentage' => $metrics['yellow_percentage']
+    ],
 ];
 
 // 7. Report Generation Timestamp
@@ -374,9 +379,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     gap: 24px;
 }
 
-/* =========================================================
-   HEADER
-========================================================= */
 .risk-map-header {
     display: flex;
     justify-content: space-between;
@@ -422,9 +424,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     color: #065f46;
 }
 
-/* =========================================================
-   STATS CARDS
-========================================================= */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -476,13 +475,10 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 .stat-total .stat-number { color: #1a1a2e; }
 .stat-red .stat-number { color: #dc3545; }
 .stat-orange .stat-number { color: #fd7e14; }
-.stat-green .stat-number { color: #28a745; }
+.stat-yellow .stat-number { color: #d4a017; }
 .stat-high .stat-number { color: #dc3545; }
 .stat-low .stat-number { color: #28a745; }
 
-/* =========================================================
-   FILTER BAR
-========================================================= */
 .filter-bar {
     display: flex;
     justify-content: space-between;
@@ -542,13 +538,13 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 
 .filter-btn.active-orange:hover { background: #e06b0a; }
 
-.filter-btn.active-green {
-    background: #28a745;
+.filter-btn.active-yellow {
+    background: #d4a017;
     color: white;
-    border-color: #28a745;
+    border-color: #d4a017;
 }
 
-.filter-btn.active-green:hover { background: #1e7e34; }
+.filter-btn.active-yellow:hover { background: #b8860b; }
 
 .filter-input {
     padding: 6px 12px;
@@ -608,9 +604,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 
 .btn-filter-pdf:hover { background: #c82333; }
 
-/* =========================================================
-   MAP
-========================================================= */
 .map-card {
     overflow: hidden;
     border-radius: 16px;
@@ -642,9 +635,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     background: #e8ecf1;
 }
 
-/* =========================================================
-   LEGEND
-========================================================= */
 .map-legend {
     display: flex;
     gap: 16px;
@@ -670,7 +660,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 
 .legend-dot-red { background: #dc3545; }
 .legend-dot-orange { background: #fd7e14; }
-.legend-dot-green { background: #28a745; }
+.legend-dot-yellow { background: #d4a017; }
 
 .legend-badge {
     font-size: 11px;
@@ -680,9 +670,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     color: #6b7280;
 }
 
-/* =========================================================
-   DATA SECTION
-========================================================= */
 .data-section {
     background: white;
     border-radius: 16px;
@@ -717,9 +704,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     font-weight: 500;
 }
 
-/* =========================================================
-   CHART + STATS
-========================================================= */
 .chart-stats-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -766,7 +750,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 
 .chart-stat-item .color-dot-red { background: #dc3545; }
 .chart-stat-item .color-dot-orange { background: #fd7e14; }
-.chart-stat-item .color-dot-green { background: #28a745; }
+.chart-stat-item .color-dot-yellow { background: #d4a017; }
 
 .chart-stat-item .stat-info {
     flex: 1;
@@ -784,9 +768,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     color: #1a1a2e;
 }
 
-/* =========================================================
-   TABLE
-========================================================= */
 .table-wrapper {
     overflow-x: auto;
     padding: 0 20px 20px 20px;
@@ -837,7 +818,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 
 .risk-tag-red { background: #fde2e5; color: #b42332; }
 .risk-tag-orange { background: #fff0df; color: #b95f00; }
-.risk-tag-green { background: #def7e8; color: #147a43; }
+.risk-tag-yellow { background: #fff8e1; color: #b8860b; }
 
 .status-tag-validated { 
     display: inline-block;
@@ -849,9 +830,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     color: #065f46;
 }
 
-/* =========================================================
-   MAP OVERLAY
-========================================================= */
 .map-overlay {
     position: absolute;
     top: 50%;
@@ -887,9 +865,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     font-size: 14px;
 }
 
-/* =========================================================
-   ALERTS
-========================================================= */
 .risk-alert {
     padding: 14px 18px;
     border-radius: 12px;
@@ -907,9 +882,26 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     color: #991b1b;
 }
 
-/* =========================================================
-   RESPONSIVE
-========================================================= */
+.section-title {
+    padding: 16px 20px 8px 20px;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.section-title .sub-count {
+    font-weight: 400;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.section-divider {
+    border: none;
+    border-top: 2px solid #f1f3f5;
+    margin: 0 20px;
+}
+
 @media (max-width: 1024px) {
     .stats-grid {
         grid-template-columns: repeat(3, 1fr);
@@ -1020,9 +1012,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     }
 }
 
-/* =========================================================
-   ZONE DRAWER - Click to Drill Down
-========================================================= */
 .drawer-overlay {
     display: none;
     position: fixed;
@@ -1253,11 +1242,11 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             <span class="stat-label">Orange Zones</span>
             <span class="stat-percent"><?= $metrics['orange_percentage'] ?>%</span>
         </div>
-        <div class="stat-card stat-green">
-            <span class="stat-icon">🟢</span>
-            <span class="stat-number"><?= $metrics['green_zones'] ?></span>
-            <span class="stat-label">Green Zones</span>
-            <span class="stat-percent"><?= $metrics['green_percentage'] ?>%</span>
+        <div class="stat-card stat-yellow">
+            <span class="stat-icon">🟡</span>
+            <span class="stat-number"><?= $metrics['yellow_zones'] ?></span>
+            <span class="stat-label">Yellow Zones</span>
+            <span class="stat-percent"><?= $metrics['yellow_percentage'] ?>%</span>
         </div>
     </section>
 
@@ -1267,7 +1256,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             <a href="?severity=&region=&sort_by=<?= urlencode($sortBy) ?>" class="filter-btn <?= $severityFilter === '' ? 'active' : '' ?>">All</a>
             <a href="?severity=Red&region=<?= urlencode($regionFilter) ?>&sort_by=<?= urlencode($sortBy) ?>" class="filter-btn <?= $severityFilter === 'Red' ? 'active-red' : '' ?>">🔴 Red</a>
             <a href="?severity=Orange&region=<?= urlencode($regionFilter) ?>&sort_by=<?= urlencode($sortBy) ?>" class="filter-btn <?= $severityFilter === 'Orange' ? 'active-orange' : '' ?>">🟠 Orange</a>
-            <a href="?severity=Green&region=<?= urlencode($regionFilter) ?>&sort_by=<?= urlencode($sortBy) ?>" class="filter-btn <?= $severityFilter === 'Green' ? 'active-green' : '' ?>">🟢 Green</a>
+            <a href="?severity=Yellow&region=<?= urlencode($regionFilter) ?>&sort_by=<?= urlencode($sortBy) ?>" class="filter-btn <?= $severityFilter === 'Yellow' ? 'active-yellow' : '' ?>">🟡 Yellow</a>
         </div>
         <div class="filter-actions">
             <form method="get" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;" id="filterForm">
@@ -1307,7 +1296,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                     <span class="legend-dot legend-orange"></span> Orange (5-9)
                 </span>
                 <span class="legend-item">
-                    <span class="legend-dot legend-green"></span> Green (1-4)
+                    <span class="legend-dot legend-yellow"></span> Yellow (1-4)
                 </span>
                 <span class="legend-badge">📍 KL only</span>
                 <span class="legend-badge" style="background:#dbeafe;color:#1e40af;">👆 Click zone for details</span>
@@ -1351,16 +1340,21 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                     </div>
                 </div>
                 <div class="chart-stat-item">
-                    <span class="color-dot color-dot-green"></span>
+                    <span class="color-dot color-dot-yellow"></span>
                     <div class="stat-info">
-                        <div class="label">Green Zone (Low Risk)</div>
-                        <div class="value"><?= $metrics['green_zones'] ?> locations · <?= $metrics['low_risk_reports'] ?> reports</div>
+                        <div class="label">Yellow Zone (Low Risk)</div>
+                        <div class="value"><?= $metrics['yellow_zones'] ?> locations · <?= $metrics['low_risk_reports'] ?> reports</div>
                     </div>
                 </div>
             </div>
         </div>
 
-       <!-- Table -->
+        <!-- KL Area Table -->
+        <h4 class="section-title">
+            <i class='bx bx-map-pin' style="color:#3b82f6;"></i> 
+            KL Area 
+            <span class="sub-count">(<?= count($klReports) ?> reports)</span>
+        </h4>
         <div class="table-wrapper">
             <table class="data-table">
                 <thead>
@@ -1381,7 +1375,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                             $riskTagClass = match($riskLevel) {
                                 'Red' => 'risk-tag-red',
                                 'Orange' => 'risk-tag-orange',
-                                default => 'risk-tag-green'
+                                default => 'risk-tag-yellow'
                             };
                             ?>
                             <?php foreach ($zone['reports'] as $report): ?>
@@ -1407,7 +1401,59 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="6" style="text-align:center;padding:40px;color:#6b7280;">No validated reports found</td>
+                            <td colspan="6" style="text-align:center;padding:20px;color:#6b7280;">No reports in KL area</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Outside KL Area Table -->
+        <hr class="section-divider">
+        <h4 class="section-title">
+            <i class='bx bx-globe' style="color:#6b7280;"></i> 
+            Outside KL Area 
+            <span class="sub-count">(<?= count($outsideKlReports) ?> reports)</span>
+        </h4>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        <th>Location</th>
+                        <th>Risk Level</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (!empty($outsideKlReports)): ?>
+                        <?php foreach ($outsideKlReports as $report): ?>
+                            <?php
+                            $riskLevel = 'Yellow';
+                            $riskTagClass = 'risk-tag-yellow';
+                            $formattedDate = 'N/A';
+                            if (!empty($report['created_at'])) {
+                                try {
+                                    $formattedDate = date('d M Y H:i', strtotime($report['created_at']));
+                                } catch (Throwable $e) {
+                                    $formattedDate = $report['created_at'];
+                                }
+                            }
+                            ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($report['ticket_id'] ?? 'N/A') ?></strong></td>
+                                <td><?= htmlspecialchars($report['location'] ?? 'N/A') ?></td>
+                                <td><span class="risk-tag <?= $riskTagClass ?>">Yellow</span></td>
+                                <td><?= htmlspecialchars($report['category'] ?? 'N/A') ?></td>
+                                <td><span class="status-tag-validated">Validated</span></td>
+                                <td><?= htmlspecialchars($formattedDate) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="6" style="text-align:center;padding:20px;color:#6b7280;">No reports outside KL area</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -1419,9 +1465,6 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
 ========================================================= -->
 <div id="pdfContent" style="display:none;background:white;padding:30px;font-family:Arial,sans-serif;color:#1a1a2e;width:100%;max-width:800px;margin:0 auto;">
 
-    <!-- =========================================================
-         Report Title
-    ========================================================= -->
     <h1 style="text-align:center;font-size:28px;color:#1a1a2e;margin-bottom:5px;">📊 Risk Analysis Report</h1>
     <p style="text-align:center;color:#6b7280;font-size:14px;margin-top:0;">
         Kuala Lumpur, Malaysia - <?= date('d M Y') ?>
@@ -1431,9 +1474,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     </p>
     <hr style="border:1px solid #e5e7eb;margin:15px 0;">
 
-    <!-- =========================================================
-         1. Executive Summary
-    ========================================================= -->
+    <!-- 1. Executive Summary -->
     <div style="margin:20px 0;padding:15px;background:#f8fafc;border-radius:8px;border-left:4px solid <?= $riskSummary['has_critical_zones'] ? '#dc3545' : '#28a745' ?>;">
         <h3 style="margin:0 0 8px 0;font-size:15px;color:#1a1a2e;">📋 Executive Summary</h3>
         <p style="margin:0 0 6px 0;font-size:13px;color:#4b5563;">
@@ -1446,9 +1487,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         </p>
     </div>
 
-    <!-- =========================================================
-         2. Risk Distribution Statistics
-    ========================================================= -->
+    <!-- 2. Risk Distribution Statistics -->
     <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📈 Risk Distribution Statistics</h3>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:10px 0 20px 0;">
         <div style="padding:15px;border:1px solid #dc3545;border-radius:8px;text-align:center;background:#fef2f2;">
@@ -1461,10 +1500,10 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
             <div style="font-size:12px;color:#6b7280;">🟠 Orange Zones</div>
             <div style="font-size:11px;color:#fd7e14;"><?= $riskDistribution['orange']['percentage'] ?>%</div>
         </div>
-        <div style="padding:15px;border:1px solid #28a745;border-radius:8px;text-align:center;background:#f0fdf4;">
-            <div style="font-size:28px;font-weight:700;color:#28a745;"><?= $riskDistribution['green']['zones'] ?></div>
-            <div style="font-size:12px;color:#6b7280;">🟢 Green Zones</div>
-            <div style="font-size:11px;color:#28a745;"><?= $riskDistribution['green']['percentage'] ?>%</div>
+        <div style="padding:15px;border:1px solid #d4a017;border-radius:8px;text-align:center;background:#fffbeb;">
+            <div style="font-size:28px;font-weight:700;color:#d4a017;"><?= $riskDistribution['yellow']['zones'] ?></div>
+            <div style="font-size:12px;color:#6b7280;">🟡 Yellow Zones</div>
+            <div style="font-size:11px;color:#d4a017;"><?= $riskDistribution['yellow']['percentage'] ?>%</div>
         </div>
     </div>
 
@@ -1492,10 +1531,10 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                 <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['orange']['percentage'] ?>%</td>
             </tr>
             <tr>
-                <td style="padding:6px;border:1px solid #e5e7eb;color:#28a745;font-weight:600;">🟢 Low Risk</td>
-                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['zones'] ?></td>
-                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['reports'] ?></td>
-                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['green']['percentage'] ?>%</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;color:#d4a017;font-weight:600;">🟡 Yellow Risk</td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['yellow']['zones'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['yellow']['reports'] ?></td>
+                <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;"><?= $riskDistribution['yellow']['percentage'] ?>%</td>
             </tr>
             <tr style="background:#f8fafc;font-weight:600;">
                 <td style="padding:6px;border:1px solid #e5e7eb;">Total</td>
@@ -1506,9 +1545,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         </tbody>
     </table>
 
-    <!-- =========================================================
-         3. High Risk Location Ranking
-    ========================================================= -->
+    <!-- 3. High Risk Location Ranking -->
     <?php if (!empty($topRiskLocations)): ?>
     <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">🚨 High Risk Location Ranking</h3>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px;">
@@ -1538,9 +1575,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     </table>
     <?php endif; ?>
 
-    <!-- =========================================================
-         4. Category Analysis
-    ========================================================= -->
+    <!-- 4. Category Analysis -->
     <?php if (!empty($categoryAnalysis)): ?>
     <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📂 Report Category Distribution</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:20px;">
@@ -1553,9 +1588,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     </div>
     <?php endif; ?>
 
-    <!-- =========================================================
-         5. Trend Analysis
-    ========================================================= -->
+    <!-- 5. Trend Analysis -->
     <?php if (!empty($dateTrend)): ?>
     <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">📉 Daily Report Trend (Last 30 Days)</h3>
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px;">
@@ -1590,9 +1623,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
     </table>
     <?php endif; ?>
 
-    <!-- =========================================================
-         6. Recommendations
-    ========================================================= -->
+    <!-- 6. Recommendations -->
     <h3 style="font-size:16px;color:#1a1a2e;margin:20px 0 10px 0;">✅ Recommendations</h3>
     <div style="margin-bottom:20px;padding:15px;background:#f0fdf4;border-radius:8px;border-left:4px solid #28a745;">
         <ul style="margin:0;padding-left:20px;font-size:13px;color:#4b5563;">
@@ -1602,9 +1633,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         </ul>
     </div>
 
-    <!-- =========================================================
-         7. Detailed Report List
-    ========================================================= -->
+    <!-- 7. Detailed Report List -->
     <hr style="border:1px solid #e5e7eb;margin:20px 0;">
     <h3 style="font-size:16px;color:#1a1a2e;margin-bottom:10px;">📋 Detailed Report List</h3>
     <table style="width:100%;border-collapse:collapse;font-size:11px;">
@@ -1638,7 +1667,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
                         $riskColor = match($zone['risk']) {
                             'Red' => '#dc3545',
                             'Orange' => '#fd7e14',
-                            default => '#28a745'
+                            default => '#d4a017'
                         };
                 ?>
                         <tr>
@@ -1662,9 +1691,7 @@ render_admin_start('View Risk Map', $admin, 'dashboard');
         </tbody>
     </table>
 
-    <!-- =========================================================
-         8. Footer
-    ========================================================= -->
+    <!-- 8. Footer -->
     <p style="text-align:center;font-size:10px;color:#6b7280;margin-top:20px;border-top:1px solid #e5e7eb;padding-top:15px;">
         Report Generated: <?= $reportGeneratedAt ?> | Risk Analysis Report | Kuala Lumpur Safety Monitoring System
     </p>
@@ -1714,13 +1741,13 @@ const KL_ZOOM = 13;
 const riskColours = {
     Red: '#dc3545',
     Orange: '#fd7e14',
-    Green: '#28a745'
+    Yellow: '#d4a017'
 };
 
 const riskColoursFill = {
     Red: '#dc3545',
     Orange: '#fd7e14',
-    Green: '#28a745'
+    Yellow: '#d4a017'
 };
 
 // ============================================================
@@ -1757,29 +1784,13 @@ function initMap() {
         ]
     });
 
-    // KL bounding box
-    const klBounds = new google.maps.Rectangle({
-        strokeColor: '#1a1a2e',
-        strokeOpacity: 0.3,
-        strokeWeight: 2,
-        fillColor: '#1a1a2e',
-        fillOpacity: 0.02,
-        map: riskMap,
-        bounds: {
-            north: KL_BOUNDS.north,
-            south: KL_BOUNDS.south,
-            east: KL_BOUNDS.east,
-            west: KL_BOUNDS.west
-        }
-    });
-
     // Draw risk zone circles.
     if (riskZones.length > 0) {
         const bounds = new google.maps.LatLngBounds();
 
         riskZones.forEach(function(zone) {
-            const colour = riskColours[zone.risk] || riskColours.Green;
-            const fillColour = riskColoursFill[zone.risk] || riskColoursFill.Green;
+            const colour = riskColours[zone.risk] || riskColours.Yellow;
+            const fillColour = riskColoursFill[zone.risk] || riskColoursFill.Yellow;
 
             let radius = 150;
             if (zone.risk === 'Red') radius = 500;
@@ -1799,15 +1810,13 @@ function initMap() {
                 clickable: true
             });
 
-            // Click to Drill Down - open drawer directly (no InfoWindow)
+            // Click to Drill Down - open drawer directly
             circle.addListener('click', function(event) {
-                // Find the full zone data
                 const fullZone = zoneReportsData.find(z => 
                     Math.abs(z.lat - zone.lat) < 0.0001 && 
                     Math.abs(z.lng - zone.lng) < 0.0001
                 );
                 
-                // Open drawer directly, no InfoWindow
                 if (fullZone) {
                     openZoneDrawer(fullZone);
                 }
@@ -1834,7 +1843,7 @@ function initMap() {
                 }
             });
 
-            // Click marker also opens drawer (no InfoWindow)
+            // Click marker also opens drawer
             marker.addListener('click', function() {
                 const fullZone = zoneReportsData.find(z => 
                     Math.abs(z.lat - zone.lat) < 0.0001 && 
@@ -1855,7 +1864,7 @@ function initMap() {
 }
 
 // ============================================================
-// Zone Drawer Functions (Click to Drill Down)
+// Zone Drawer Functions
 // ============================================================
 
 function openZoneDrawer(zone) {
@@ -1864,13 +1873,12 @@ function openZoneDrawer(zone) {
     const body = document.getElementById('zoneDrawerBody');
     const title = document.getElementById('zoneNameDisplay');
     
-    // Set drawer title
     title.textContent = zone.name || 'Unknown Area';
     
     const reports = zone.reports || [];
-    const riskLevel = zone.risk || 'Green';
-    const riskColor = riskLevel === 'Red' ? '#dc3545' : riskLevel === 'Orange' ? '#fd7e14' : '#28a745';
-    const riskTagClass = riskLevel === 'Red' ? 'risk-tag-red' : riskLevel === 'Orange' ? 'risk-tag-orange' : 'risk-tag-green';
+    const riskLevel = zone.risk || 'Yellow';
+    const riskColor = riskLevel === 'Red' ? '#dc3545' : riskLevel === 'Orange' ? '#fd7e14' : '#d4a017';
+    const riskTagClass = riskLevel === 'Red' ? 'risk-tag-red' : riskLevel === 'Orange' ? 'risk-tag-orange' : 'risk-tag-yellow';
     
     if (reports.length === 0) {
         body.innerHTML = `
@@ -1887,7 +1895,6 @@ function openZoneDrawer(zone) {
             </div>
         `;
         
-        // Sort reports by created_at (newest first)
         const sortedReports = [...reports].sort((a, b) => {
             return new Date(b.created_at) - new Date(a.created_at);
         });
@@ -1919,7 +1926,6 @@ function openZoneDrawer(zone) {
         body.innerHTML = html;
     }
     
-    // Show drawer
     overlay.classList.add('active');
     panel.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1931,7 +1937,6 @@ function closeZoneDrawer() {
     document.body.style.overflow = '';
 }
 
-// Refresh the map when the window size changes.
 window.addEventListener('resize', function() {
     if (riskMap) {
         setTimeout(function() {
@@ -1949,15 +1954,15 @@ function initChart() {
     
     const redZones = <?= $metrics['red_zones'] ?>;
     const orangeZones = <?= $metrics['orange_zones'] ?>;
-    const greenZones = <?= $metrics['green_zones'] ?>;
+    const yellowZones = <?= $metrics['yellow_zones'] ?>;
     
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Red Zone', 'Orange Zone', 'Green Zone'],
+            labels: ['Red Zone', 'Orange Zone', 'Yellow Zone'],
             datasets: [{
-                data: [redZones, orangeZones, greenZones],
-                backgroundColor: ['#dc3545', '#fd7e14', '#28a745'],
+                data: [redZones, orangeZones, yellowZones],
+                backgroundColor: ['#dc3545', '#fd7e14', '#d4a017'],
                 borderWidth: 3,
                 borderColor: '#ffffff'
             }]
@@ -1975,9 +1980,6 @@ function initChart() {
     });
 }
 
-// ============================================================
-// DOMContentLoaded event
-// ============================================================
 document.addEventListener('DOMContentLoaded', function() {
     initChart();
 });
