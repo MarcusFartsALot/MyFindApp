@@ -383,7 +383,7 @@ class _VisaHistoryScreenState extends State<VisaHistoryScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              "You haven't submitted any visa applications yet. Head over to Overview to start a new application.",
+              "You haven't submitted any visa applications yet. Head over to Home to start a new  visa application.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
             ),

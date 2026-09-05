@@ -52,18 +52,23 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
   String? _selectedKlZone;
   String? _selectedAccomType;
 
+  // Payment Selection Variable
+  String? _selectedCardType;
+
   // Dropdown Data Lists
   final List<String> _educationLevels = [
     'Primary School',
     'Secondary School',
-    'Higher Education'
+    'Higher Education',
+    'Others'
   ];
 
   final List<String> _employmentStatuses = [
     'Full-Time Employee',
     'Part-Time Employee',
     'Contract Employee',
-    'Self-Employed'
+    'Self-Employed',
+    'Others'
   ];
 
   final List<String> _malaysiaStates = [
@@ -130,7 +135,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     }
   }
 
-  /// Custom UI Popup Dialog for Success, Error, and Validation Feedback
   void _showStatusDialog({
     required String title,
     required String message,
@@ -235,7 +239,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         return;
       }
 
-      // --- 1. LOAD LOCAL CACHE DRAFTS FIRST (JSON) ---
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = 'visa_draft_${user.id}';
       final draftString = prefs.getString(cacheKey);
@@ -268,7 +271,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           _flightNoCtrl.text = draftData['flightNo'] ?? '';
 
           final cachedGender = draftData['gender'];
-          if (cachedGender != null && ['Male', 'Female', 'Other'].contains(cachedGender)) _selectedGender = cachedGender;
+          if (cachedGender != null && ['Male', 'Female'].contains(cachedGender)) _selectedGender = cachedGender;
 
           final cachedMarital = draftData['marital'];
           if (cachedMarital != null && ['Single', 'Couple', 'Married'].contains(cachedMarital)) _selectedMaritalStatus = cachedMarital;
@@ -292,7 +295,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         }
       }
 
-      // --- 2. FETCH AND OVERWRITE IDENTITY DATA FROM DB ---
       final profileData = await _supabase
           .from('profiles')
           .select()
@@ -324,7 +326,6 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           }
         }
 
-        // --- 3. FETCH LATEST PREVIOUS APPLICATION TO FILL THE REST ---
         final lastApp = await _supabase
             .from('visa_applications')
             .select('''
@@ -362,7 +363,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           if (_emergRelCtrl.text.isEmpty) _emergRelCtrl.text = applicant?['emergency_relationship'] ?? '';
 
           final fetchedGender = applicant?['gender'];
-          if (_selectedGender == null && fetchedGender != null && ['Male', 'Female', 'Other'].contains(fetchedGender)) _selectedGender = fetchedGender;
+          if (_selectedGender == null && fetchedGender != null && ['Male', 'Female'].contains(fetchedGender)) _selectedGender = fetchedGender;
 
           final fetchedMarital = applicant?['marital_status'];
           if (_selectedMaritalStatus == null && fetchedMarital != null && ['Single', 'Couple', 'Married'].contains(fetchedMarital)) _selectedMaritalStatus = fetchedMarital;
@@ -519,6 +520,30 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     );
   }
 
+  Widget _buildLockedField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        onTap: () {
+          _showStatusDialog(
+            title: "Information Locked",
+            message: "This mandatory field is securely linked to your registered profile and cannot be manually altered.",
+            isInfo: true,
+          );
+        },
+        style: const TextStyle(color: Color(0xFF64748B)),
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          suffixIcon: const Icon(Icons.lock_outline, color: Color(0xFF94A3B8), size: 18),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSelectionBox(String title, List<String> options, String? currentValue, ValueChanged<String> onChanged) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0, top: 4.0),
@@ -598,13 +623,55 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     );
   }
 
+  Widget _buildCardTypeSelector(String title, Color brandColor) {
+    final isSelected = _selectedCardType == title;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedCardType = title;
+        });
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? brandColor.withOpacity(0.08) : const Color(0xFFF8FAFC),
+          border: Border.all(
+            color: isSelected ? brandColor : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.credit_card_rounded,
+              color: isSelected ? brandColor : const Color(0xFF94A3B8),
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                color: isSelected ? brandColor : const Color(0xFF64748B),
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool _validateLogicalDates() {
     DateTime? passIssue = DateTime.tryParse(_passIssueCtrl.text);
     DateTime? passExpiry = DateTime.tryParse(_passExpiryCtrl.text);
-    if (passIssue != null && passExpiry != null && passIssue.isAfter(passExpiry)) {
+    if (passIssue != null && passExpiry != null && !passExpiry.isAfter(passIssue)) {
       _showStatusDialog(
         title: "Invalid Passport Dates",
-        message: "Passport Issue Date cannot be after the Expiry Date.",
+        message: "Passport Expiry Date must be strictly after the Passport Issue Date.",
         isError: true,
       );
       return false;
@@ -612,20 +679,20 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
 
     DateTime? arr = DateTime.tryParse(_arrDateCtrl.text);
     DateTime? dep = DateTime.tryParse(_depDateCtrl.text);
-    if (arr != null && dep != null && arr.isAfter(dep)) {
+    if (arr != null && dep != null && !dep.isAfter(arr)) {
       _showStatusDialog(
         title: "Invalid Travel Dates",
-        message: "Arrival Date cannot be after the Departure Date.",
+        message: "Departure Date must be strictly after the Arrival Date.",
         isError: true,
       );
       return false;
     }
 
     DateTime? visaExp = DateTime.tryParse(_visaExpCtrl.text);
-    if (dep != null && visaExp != null && dep.isAfter(visaExp)) {
+    if (dep != null && visaExp != null && !visaExp.isAfter(dep)) {
       _showStatusDialog(
         title: "Invalid Visa Dates",
-        message: "Visa Expiry Date must be after or on the Departure Date.",
+        message: "Visa Expiry Date must be strictly after the Departure Date.",
         isError: true,
       );
       return false;
@@ -654,7 +721,11 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         });
       }
     } catch (e) {
-      debugPrint("FilePicker Error: $e");
+      _showStatusDialog(
+        title: "Upload Failed",
+        message: "An error occurred while opening the file picker: $e",
+        isError: true,
+      );
     } finally {
       setState(() => _isUploadingDoc = false);
     }
@@ -673,7 +744,36 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
 
     if (!_validateLogicalDates()) return false;
 
-    final cleanedCardNumber = _cardNumberCtrl.text.replaceAll(' ', '').replaceAll('-', '');
+    if (_selectedCardType == null) {
+      _showStatusDialog(
+        title: "Payment Error",
+        message: "Please select Visa or Mastercard, or enter a valid card number starting with 4, 5, or 2.",
+        isError: true,
+      );
+      return false;
+    }
+
+    final cleanedCardNumber = _cardNumberCtrl.text.replaceAll(RegExp(r'\D'), '');
+
+    if (cleanedCardNumber.isNotEmpty) {
+      if (_selectedCardType == 'Visa' && !cleanedCardNumber.startsWith('4')) {
+        _showStatusDialog(
+          title: "Card Type Mismatch",
+          message: "You selected Visa, but your card number does not start with 4. Please correct your card type or number.",
+          isError: true,
+        );
+        return false;
+      }
+      if (_selectedCardType == 'Mastercard' && !(cleanedCardNumber.startsWith('5') || cleanedCardNumber.startsWith('2'))) {
+        _showStatusDialog(
+          title: "Card Type Mismatch",
+          message: "You selected Mastercard, but your card number does not start with 5 or 2. Please correct your card type or number.",
+          isError: true,
+        );
+        return false;
+      }
+    }
+
     if (!RegExp(r'^\d{16}$').hasMatch(cleanedCardNumber)) {
       _showStatusDialog(
         title: "Payment Error",
@@ -819,6 +919,32 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     }
   }
 
+  // FORMATTER: Scans for numbers ("1)", "1.") or Ordinals ("Firstly,") and injects clean double line breaks.
+  Widget _buildReasoningBlocks(String text) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    String formattedText = text.replaceAllMapped(
+        RegExp(r'\s+(?=(?:\d+[\)\.])|(?:Firstly|Secondly|Thirdly|Fourthly|Finally|Furthermore|Moreover|In addition)[,:]?)', caseSensitive: false),
+            (Match m) => '\n\n'
+    );
+
+    List<String> blocks = formattedText.split('\n\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: blocks.map((block) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Text(
+            block,
+            textAlign: TextAlign.left,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.5),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -871,7 +997,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         const SizedBox(height: 20),
         const Center(child: Icon(Icons.verified, size: 64, color: Color(0xFF15803D))),
         const SizedBox(height: 12),
-        const Center(child: Text("Payment Successful & Risk Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
+        const Center(child: Text("Payment Successful & Rate Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
         const SizedBox(height: 32),
         Container(
           padding: const EdgeInsets.all(24),
@@ -881,8 +1007,30 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
               const Text("VISA APPLICATION SUCCESSFUL RATE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B), letterSpacing: 1)),
               const SizedBox(height: 8),
               Text("${_successRate.toStringAsFixed(1)}%", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A))),
-              const SizedBox(height: 12),
-              Text(_aiReasoning, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.4)),
+              const SizedBox(height: 16),
+              _buildReasoningBlocks(_aiReasoning),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFBEB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFDE68A)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Color(0xFFD97706), size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  "Disclaimer: This AI calculation strictly predicts your visa successful rate. It does NOT mean that your visa is already approved by the government. Your application must still be reviewed by administrator.",
+                  style: TextStyle(fontSize: 12, color: Color(0xFF92400E), height: 1.4),
+                ),
+              ),
             ],
           ),
         ),
@@ -951,14 +1099,14 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           title: const Text('Tourist Details'),
           isActive: _currentStep >= 0,
           content: Column(children: [
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Full Name*'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _passportCtrl, decoration: const InputDecoration(labelText: 'Passport Number*'))),
-            _buildDateField('Passport Issue Date', _passIssueCtrl),
-            _buildDateField('Passport Expiry Date', _passExpiryCtrl),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _passCountryCtrl, decoration: const InputDecoration(labelText: 'Passport Issuing Country'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _nationalityCtrl, decoration: const InputDecoration(labelText: 'Nationality*'))),
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _residenceCtrl, decoration: const InputDecoration(labelText: 'Country of Residence'))),
-            _buildSelectionBox('Gender', ['Male', 'Female', 'Other'], _selectedGender, (val) => setState(() => _selectedGender = val)),
+            _buildLockedField('Full Name*', _nameCtrl),
+            _buildLockedField('Passport Number*', _passportCtrl),
+            _buildLockedField('Passport Issue Date', _passIssueCtrl),
+            _buildLockedField('Passport Expiry Date', _passExpiryCtrl),
+            _buildLockedField('Passport Issuing Country', _passCountryCtrl),
+            _buildLockedField('Nationality*', _nationalityCtrl),
+            _buildLockedField('Country of Residence', _residenceCtrl),
+            _buildSelectionBox('Gender', ['Male', 'Female'], _selectedGender, (val) => setState(() => _selectedGender = val)),
             _buildDateField('Date of Birth', _dobCtrl),
             _buildSelectionBox('Marital Status', ['Single', 'Couple', 'Married'], _selectedMaritalStatus, (val) => setState(() => _selectedMaritalStatus = val)),
             _buildDropdownField('Education Level', _educationLevels, _selectedEduLevel, (val) => setState(() => _selectedEduLevel = val)),
@@ -1039,8 +1187,46 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
               decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8)),
               child: const Text("AI Calculation Fee: MYR 150.00", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
             ),
+            const SizedBox(height: 16),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Select Credit Card', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _buildCardTypeSelector('Visa', const Color(0xFF1A1F71))),
+                const SizedBox(width: 12),
+                Expanded(child: _buildCardTypeSelector('Mastercard', const Color(0xFFEB001B))),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _cardNumberCtrl,
+              decoration: InputDecoration(
+                labelText: 'Card Number (16 Digits)',
+                prefixIcon: Icon(
+                  Icons.credit_card_rounded,
+                  color: _selectedCardType == 'Visa' ? const Color(0xFF1A1F71) : (_selectedCardType == 'Mastercard' ? const Color(0xFFEB001B) : const Color(0xFF94A3B8)),
+                ),
+              ),
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                final clean = value.replaceAll(RegExp(r'\D'), '');
+                if (clean.isNotEmpty) {
+                  if (clean.startsWith('4')) {
+                    if (_selectedCardType != 'Visa') setState(() => _selectedCardType = 'Visa');
+                  } else if (clean.startsWith('5') || clean.startsWith('2')) {
+                    if (_selectedCardType != 'Mastercard') setState(() => _selectedCardType = 'Mastercard');
+                  } else {
+                    if (_selectedCardType != null) setState(() => _selectedCardType = null);
+                  }
+                } else {
+                  if (_selectedCardType != null) setState(() => _selectedCardType = null);
+                }
+              },
+            ),
             const SizedBox(height: 12),
-            TextField(controller: _cardNumberCtrl, decoration: const InputDecoration(labelText: 'Card Number (16 Digits)'), keyboardType: TextInputType.number),
             Row(children: [
               Expanded(child: TextField(controller: _cardExpiryCtrl, decoration: const InputDecoration(labelText: 'MM/YY'))),
               const SizedBox(width: 12),
@@ -1117,7 +1303,7 @@ class _AiProgressViewState extends State<_AiProgressView> with SingleTickerProvi
                   child: const Icon(Icons.memory_rounded, size: 80, color: Colors.white),
                 ),
                 const SizedBox(height: 24),
-                const Text('AI Calculating Visa Application Successful Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                const Text('AI Calculating Visa Successful Rate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
                 const SizedBox(height: 8),
                 const SizedBox(height: 40),
 
