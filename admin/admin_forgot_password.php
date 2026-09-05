@@ -61,8 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Forgot Admin Password | MyFind</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <link href="assets/html.css" rel="stylesheet">
+    <link href="assets/auth-theme.css" rel="stylesheet">
 </head>
-<body class="login-page">
+<body class="login-page myfind-auth-page">
 <div class="login-page-background" aria-hidden="true"></div>
 <main class="admin-login-card">
     <section class="admin-login-welcome" aria-labelledby="welcome-title">

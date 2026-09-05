@@ -8,28 +8,32 @@ function render_sidebar(array $admin, string $active): void
     $job = 'System Administrator';
     $profileImage = $admin['profile_image'] ?? null;
     ?>
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar open" id="sidebar" aria-label="Admin navigation">
         <div class="logo-details">
-            <i class='bx bx-shield-quarter icon'></i>
-            <div class="logo_name">MyFind Admin</div>
-            <i class='bx bx-menu' id="btn" role="button" tabindex="0" aria-label="Toggle sidebar"></i>
+            <i class='bx bx-compass icon' aria-hidden="true"></i>
+            <div class="logo_name">MyFind<span>ADMINISTRATION</span></div>
+            <button type="button" id="btn" class="sidebar-toggle" aria-label="Collapse navigation" aria-expanded="true" aria-controls="sidebar-navigation"><i class="bx bx-menu-alt-right" aria-hidden="true"></i></button>
         </div>
-        <ul class="nav-list">
-            <li class="<?= $active === 'dashboard' ? 'active' : '' ?>">
-                <a href="admin_dashboard.php">
-                    <i class='bx bx-grid-alt'></i>
-                    <span class="links_name">Dashboard</span>
+        <ul class="nav-list" id="sidebar-navigation">
+            <?php foreach ([
+                ['dashboard', 'admin_dashboard.php', 'bx-grid-alt', 'Dashboard'],
+                ['risk', 'risk_map.php', 'bx-map-alt', 'View Risk Map'],
+                ['tourists', 'approve_tourist.php', 'bx-world', 'Approve Tourist'],
+                ['citizens', 'approve_citizen.php', 'bx-id-card', 'Approve Citizen'],
+                ['reports', 'approve_citizen_report.php', 'bx-message-square-detail', 'Citizen Reports'],
+                ['visa', 'visa_management.php', 'bx-calendar-check', 'Visa & Monitor'],
+                ['profile', 'profile.php', 'bx-cog', 'Settings'],
+            ] as [$key, $href, $icon, $label]): ?>
+            <li class="<?= $active === $key ? 'active' : '' ?> <?= $key === 'profile' ? 'nav-settings' : '' ?>">
+                <a href="<?= escape($href) ?>" aria-label="<?= escape($label) ?>" title="<?= escape($label) ?>" <?= $active === $key ? 'aria-current="page"' : '' ?>>
+                    <i class="bx <?= escape($icon) ?>" aria-hidden="true"></i>
+                    <span class="links_name"><?= escape($label) ?></span>
                 </a>
-                <span class="tooltip">Dashboard</span>
+                <span class="tooltip" aria-hidden="true"><?= escape($label) ?></span>
             </li>
-            <li class="<?= $active === 'profile' ? 'active' : '' ?>">
-                <a href="profile.php">
-                    <i class='bx bx-cog'></i>
-                    <span class="links_name">Settings</span>
-                </a>
-                <span class="tooltip">Settings</span>
-            </li>
-            <li class="profile">
+            <?php endforeach; ?>
+        </ul>
+            <div class="sidebar-account">
                 <div class="profile-details">
                     <div class="profile-avatar">
                         <?php if (!empty($profileImage)): ?>
@@ -49,8 +53,7 @@ function render_sidebar(array $admin, string $active): void
                         <i class='bx bx-log-out' id="log_out"></i>
                     </button>
                 </form>
-            </li>
-        </ul>
+            </div>
     </aside>
     <?php
 }

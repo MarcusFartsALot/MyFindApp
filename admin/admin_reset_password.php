@@ -95,8 +95,9 @@ $recoveryReady = is_array($recoveryProfile);
     <title>Reset Admin Password | MyFind</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <link href="assets/html.css" rel="stylesheet">
+    <link href="assets/auth-theme.css" rel="stylesheet">
 </head>
-<body class="login-page">
+<body class="login-page myfind-auth-page">
 <div class="login-page-background" aria-hidden="true"></div>
 <main class="admin-login-card">
     <section class="admin-login-welcome" aria-labelledby="welcome-title">
@@ -175,7 +176,7 @@ $recoveryReady = is_array($recoveryProfile);
                             aria-pressed="false"
                             data-password-toggle="new_password"
                         >
-                            <i class='bx bx-show' aria-hidden="true"></i>
+                            <i class='bx bx-hide' aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -201,7 +202,7 @@ $recoveryReady = is_array($recoveryProfile);
                             aria-pressed="false"
                             data-password-toggle="confirm_password"
                         >
-                            <i class='bx bx-show' aria-hidden="true"></i>
+                            <i class='bx bx-hide' aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -248,8 +249,8 @@ $recoveryReady = is_array($recoveryProfile);
             input.type = willShow ? 'text' : 'password';
             button.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
             button.setAttribute('aria-pressed', String(willShow));
-            button.querySelector('i')?.classList.toggle('bx-show', !willShow);
-            button.querySelector('i')?.classList.toggle('bx-hide', willShow);
+            button.querySelector('i')?.classList.toggle('bx-show', willShow);
+            button.querySelector('i')?.classList.toggle('bx-hide', !willShow);
             input.focus();
         });
     });
