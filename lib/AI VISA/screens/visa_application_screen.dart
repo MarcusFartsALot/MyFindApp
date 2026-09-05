@@ -997,7 +997,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         const SizedBox(height: 20),
         const Center(child: Icon(Icons.verified, size: 64, color: Color(0xFF15803D))),
         const SizedBox(height: 12),
-        const Center(child: Text("Payment Successful & Risk Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
+        const Center(child: Text("Payment Successful & Rate Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
         const SizedBox(height: 32),
         Container(
           padding: const EdgeInsets.all(24),
