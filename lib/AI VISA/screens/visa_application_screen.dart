@@ -919,17 +919,15 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     }
   }
 
-  // NEW: UI Formatter that splits the AI's solid paragraph into a beautiful bulleted list
+  // FORMATTER: Scans for numbers ("1)", "1.") or Ordinals ("Firstly,") and injects clean double line breaks.
   Widget _buildReasoningBlocks(String text) {
     if (text.isEmpty) return const SizedBox.shrink();
 
-    // Dynamically injects line breaks before numbers ("1.") or list words ("Firstly,")
     String formattedText = text.replaceAllMapped(
         RegExp(r'\s+(?=(?:\d+[\)\.])|(?:Firstly|Secondly|Thirdly|Fourthly|Finally|Furthermore|Moreover|In addition)[,:]?)', caseSensitive: false),
             (Match m) => '\n\n'
     );
 
-    // Split the text into separate chunks to map to the UI
     List<String> blocks = formattedText.split('\n\n').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
     return Column(
@@ -939,7 +937,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Text(
             block,
-            textAlign: TextAlign.left, // Left alignment creates a much cleaner list layout than justify
+            textAlign: TextAlign.left,
             style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.5),
           ),
         );
@@ -999,7 +997,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         const SizedBox(height: 20),
         const Center(child: Icon(Icons.verified, size: 64, color: Color(0xFF15803D))),
         const SizedBox(height: 12),
-        const Center(child: Text("Payment Successful & Rate Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
+        const Center(child: Text("Payment Successful & Risk Calculated", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF15803D)))),
         const SizedBox(height: 32),
         Container(
           padding: const EdgeInsets.all(24),
@@ -1010,13 +1008,11 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
               const SizedBox(height: 8),
               Text("${_successRate.toStringAsFixed(1)}%", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w800, color: Color(0xFF1E3A8A))),
               const SizedBox(height: 16),
-              // NEW: Replaced the single justified Text block with the List Builder
               _buildReasoningBlocks(_aiReasoning),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        // NEW: Prominent amber disclaimer UI added here
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1116,7 +1112,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
             _buildDropdownField('Education Level', _educationLevels, _selectedEduLevel, (val) => setState(() => _selectedEduLevel = val)),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _occupCtrl, decoration: const InputDecoration(labelText: 'Occupation'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email Address'))),
-            _buildLockedField('Phone Number', _phoneCtrl),
+            Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _phoneCtrl, decoration: const InputDecoration(labelText: 'Phone Number'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emergNameCtrl, decoration: const InputDecoration(labelText: 'Emergency Contact Name'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emergPhoneCtrl, decoration: const InputDecoration(labelText: 'Emergency Contact Phone'))),
             Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _emergRelCtrl, decoration: const InputDecoration(labelText: 'Emergency Contact Relationship'))),
@@ -1194,7 +1190,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
             const SizedBox(height: 16),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text('Select Payment Method', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              child: Text('Select Credit Card', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
             ),
             const SizedBox(height: 8),
             Row(
