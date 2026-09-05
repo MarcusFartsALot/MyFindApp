@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;600;700;800&display=swap');
+
+/* Shared palette for public sign-in and recovery. No dashboard overrides. */
+.login-dialog .admin-landing-back { display: inline-flex; align-items: center; gap: 7px; width: fit-content; margin-bottom: 20px; padding: 5px 0; color: #2b5290; font-size: 13px; font-weight: 600; text-decoration: none; }
+.login-dialog .admin-landing-back:hover { text-decoration: underline; }
+.login-dialog .admin-landing-back:focus-visible { outline: 3px solid #7bb5e4; outline-offset: 4px; border-radius: 3px; }
+.myfind-auth-page { background: #101f37; }
+.myfind-auth-page .login-page-background { background: radial-gradient(ellipse at 80% 20%, #34649180, transparent 55%), #101f37; }
+.myfind-auth-page .admin-login-card, .login-dialog .admin-login-card { color: #12223b; }
+.myfind-auth-page .admin-login-card *, .login-dialog .admin-login-card * { font-family: 'DM Sans', sans-serif; }
+.myfind-auth-page .admin-login-welcome, .login-dialog .admin-login-welcome { background: radial-gradient(ellipse at bottom left, #346491, #152d49 50%, #101f37); }
+.myfind-auth-page .admin-login-panel, .login-dialog .admin-login-panel { background: #f8fafc; }
+.myfind-auth-page .admin-welcome-copy h2, .login-dialog .admin-welcome-copy h2,
+.myfind-auth-page .admin-login-heading h1, .login-dialog .admin-login-heading h1 { font-family: 'Manrope', sans-serif; }
+.myfind-auth-page .admin-login-eyebrow, .login-dialog .admin-login-eyebrow { color: #346491; }
+.myfind-auth-page .admin-welcome-label, .login-dialog .admin-welcome-label { color: #aed5fc; }
+.myfind-auth-page .admin-input-wrap input, .login-dialog .admin-input-wrap input { background: #fff; border-color: #d8e2ee; }
+.myfind-auth-page .admin-input-wrap:focus-within input, .login-dialog .admin-input-wrap:focus-within input { border-color: #5b91bd; box-shadow: 0 0 0 4px #a9d6ff40; }
+.myfind-auth-page .admin-input-wrap:focus-within > i, .login-dialog .admin-input-wrap:focus-within > i { color: #346491; }
+.myfind-auth-page .button.primary, .login-dialog .button.primary { background: #a9d6ff; color: #10223d; box-shadow: 0 8px 22px #101f3715; }
+.myfind-auth-page .button.primary:hover, .login-dialog .button.primary:hover { background: #c5e4ff; }
+.myfind-auth-page .admin-text-link, .myfind-auth-page .admin-forgot-link, .login-dialog .admin-forgot-link { color: #2b5290; }
+.myfind-auth-page .password-toggle:hover, .login-dialog .password-toggle:hover { color: #2b5290; background: #e8eff6; }
+.myfind-auth-page .admin-security-note, .login-dialog .admin-security-note { background: #101f3740; border-color: #a9d6ff30; }
+
+@media (prefers-reduced-motion: no-preference) {
+    html:has(.about-shell) { scroll-behavior: smooth; }
+    .about-hero-copy { animation: myfind-enter 650ms ease-out both; }
+    .about-city { animation: myfind-enter 850ms 100ms ease-out both; }
+    .about-shell a, .about-benefit, .myfind-auth-page button, .login-dialog button { transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
+    .about-cta:hover, .about-login:hover { transform: translateY(-2px); }
+    .about-benefit:hover { transform: translateY(-4px); box-shadow: 0 16px 35px #12223b09; }
+    .reveal-section { opacity: 0; transform: translateY(20px); transition: opacity 650ms ease, transform 650ms ease; }
+    .reveal-section.is-visible { opacity: 1; transform: none; }
+    .login-dialog[open], .myfind-auth-page .admin-login-card { animation: myfind-dialog 240ms ease-out both; }
+    .login-dialog[open]::backdrop { animation: myfind-backdrop 240ms ease-out both; }
+}
+@keyframes myfind-enter { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: none; } }
+@keyframes myfind-dialog { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes myfind-backdrop { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    .about-shell *, .login-dialog *, .myfind-auth-page * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    .reveal-section { opacity: 1; transform: none; }
+}

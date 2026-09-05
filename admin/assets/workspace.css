@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+/* Shared presentation only. Status colours, hidden panels, maps, and form
+   behaviour stay under their existing page code. No ancestor transforms. */
+body.admin-workspace {
+    --sidebar: #101f37; --sidebar-soft: #162c47; --sidebar-hover: #1e3652;
+    --sidebar-active: #a9d6ff; --background: #f4f7fa; --surface: #fff;
+    --border: #dfe7ef; --text: #12223b; --muted: #637185; --blue: #2b5290;
+    background: var(--background); color: var(--text);
+}
+.admin-workspace :where(p, span, div, a, button, input, select, textarea, th, td, label, dt, dd, li, small, strong, summary) { font-family: 'DM Sans', sans-serif; }
+.admin-workspace :where(h1, h2, h3, h4) { font-family: 'Manrope', sans-serif; letter-spacing: -.5px; }
+.admin-workspace :where(a, button, input, select, textarea):focus-visible { outline: 3px solid #7bb5e4; outline-offset: 3px; }
+
+/* Navigation: labelled by default on desktop, compact rail on smaller screens. */
+.admin-workspace .sidebar { width: 80px; padding: 22px 12px 14px; display: flex; flex-direction: column; height: 100dvh; border-right: 1px solid #ffffff0d; transition: width 200ms ease; }
+.admin-workspace .sidebar.open { width: 256px; }
+.admin-workspace .sidebar .logo-details { flex: 0 0 58px; gap: 7px; margin-bottom: 30px; }
+.admin-workspace .sidebar .logo-details > .icon { min-width: 30px; width: 30px; font-size: 30px; color: #a9d6ff; }
+.admin-workspace .sidebar .logo_name { font: 700 22px 'Manrope', sans-serif; letter-spacing: -.8px; }
+.admin-workspace .sidebar .logo_name span { display: block; font: 500 8px 'DM Sans', sans-serif; letter-spacing: 1.6px; color: #8fa9c7; margin-top: 5px; }
+.admin-workspace .sidebar .sidebar-toggle { border: 0; color: #b7cbe2; background: transparent; width: 30px; height: 36px; border-radius: 6px; padding: 0; }
+.admin-workspace .sidebar .sidebar-toggle:hover { background: #ffffff12; }
+.admin-workspace .sidebar .sidebar-toggle i { min-width: 30px; width: 30px; height: 36px; line-height: 36px; font-size: 22px; }
+.admin-workspace .sidebar:not(.open) .logo-details #btn { right: 12px; }
+.admin-workspace .sidebar .nav-list { display: flex; flex-direction: column; flex: 1; min-height: 0; height: auto; margin-top: 0; padding-bottom: 16px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #38526f transparent; }
+.admin-workspace .sidebar li { margin: 3px 0; flex-shrink: 0; }
+.admin-workspace .sidebar li a { min-height: 46px; height: auto; border-radius: 7px; background: transparent; color: #b9cbe0; }
+.admin-workspace .sidebar li a i { min-width: 54px; line-height: 46px; height: 46px; font-size: 20px; color: #9db5d0; }
+.admin-workspace .sidebar li a .links_name { font-size: 13px; font-weight: 500; color: #b9cbe0; max-width: 0; overflow: hidden; }
+.admin-workspace .sidebar.open li a .links_name { max-width: 175px; }
+.admin-workspace .sidebar li a:hover { background: #1e3652; }
+.admin-workspace .sidebar li.active a { background: #a9d6ff; }
+.admin-workspace .sidebar li.active a :is(i, .links_name) { color: #10223d; font-weight: 700; }
+.admin-workspace .sidebar .tooltip { display: none; }
+.admin-workspace .sidebar li a:focus-visible { outline-offset: -3px; }
+.admin-workspace .sidebar-account { position: relative; min-height: 64px; flex: 0 0 64px; border-top: 1px solid #ffffff20; padding: 17px 42px 0 0; color: white; }
+.admin-workspace .sidebar-account .profile-details { display: flex; align-items: center; }
+.admin-workspace .sidebar-account .profile-avatar { width: 33px; height: 33px; flex-basis: 33px; margin-right: 10px; background: #29445f; }
+.admin-workspace .sidebar-account .profile-avatar i { min-width: 33px; width: 33px; height: 33px; line-height: 33px; font-size: 18px; color: #bed5ed; }
+.admin-workspace .sidebar-account .name { max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.admin-workspace .sidebar-account .job { margin-top: 4px; font-size: 9px; color: #8fa9c7; }
+.admin-workspace .sidebar-account .logout-form { top: 17px; height: 36px; width: 32px; }
+.admin-workspace .sidebar-account .logout-form button { height: 36px; width: 32px; border-radius: 5px; }
+.admin-workspace .sidebar-account .logout-form button:hover { background: #ffffff15; }
+.admin-workspace .sidebar-account #log_out { position: static; transform: none; min-width: 32px; height: 36px; line-height: 36px; font-size: 20px; color: #b9cbe0; }
+.admin-workspace .sidebar:not(.open) .sidebar-account .profile-details { display: none; }
+.admin-workspace .sidebar:not(.open) .sidebar-account .logout-form { right: 12px; }
+
+/* Workspace frame. It fills the remaining width without a boxed outer card. */
+.admin-workspace .main-content { left: 80px; width: calc(100% - 80px); padding: 0 clamp(22px, 3vw, 48px) 40px; background: #f4f7fa; transition: left 200ms ease, width 200ms ease; min-width: 0; z-index: auto; }
+.admin-workspace .sidebar.open ~ .main-content { left: 256px; width: calc(100% - 256px); }
+.admin-workspace .workspace-topbar { display: flex; align-items: center; justify-content: space-between; min-height: 86px; gap: 24px; margin-bottom: 28px; border-bottom: 1px solid #dfe7ef; }
+.admin-workspace .workspace-eyebrow { display: block; font-size: 8px; color: #70849c; font-weight: 700; letter-spacing: 1.7px; margin-bottom: 8px; }
+.admin-workspace .workspace-breadcrumb { font-size: 12px; color: #637185; }
+.admin-workspace .workspace-breadcrumb > span { color: #a9b8c9; padding: 0 10px; }
+.admin-workspace .workspace-account-link { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; color: #405773; text-decoration: none; }
+.admin-workspace .workspace-account-link i { font-size: 24px; color: #58708e; }
+.admin-workspace .workspace-account-link span { max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.admin-workspace .workspace-duplicate-title { display: none; }
+.admin-workspace .page-header { margin-bottom: 14px; }
+.admin-workspace .page-header h1 { font-size: 29px; font-weight: 700; color: #12223b; }
+.admin-workspace :is(.tourist-page, .citizen-page, .report-page, .risk-map-page, .profile-page, .visa-page) { padding: 0; gap: 24px; min-width: 0; }
+.admin-workspace :is(.tourist-header, .citizen-header, .report-header, .risk-map-header, .profile-header) { background: transparent; color: #12223b; padding: 0 0 24px; border: 0; border-bottom: 1px solid #dfe7ef; border-radius: 0; box-shadow: none; }
+.admin-workspace :is(.tourist-header, .citizen-header, .report-header, .risk-map-header, .profile-header) h1 { font-size: 29px; color: #12223b; font-weight: 700; letter-spacing: -.9px; }
+.admin-workspace :is(.tourist-header, .citizen-header, .report-header, .risk-map-header, .profile-header) :is(p, .subtitle) { color: #637185; font-size: 13px; line-height: 1.7; opacity: 1; }
+.admin-workspace :is(.tourist-header, .citizen-header, .report-header, .profile-header) :is(.badge-tourists, .badge-citizens, .badge-reports, .badge-profile) { border: 1px solid #d3e2f1; color: #405e83; background: #e9f1fa; font-size: 10px; box-shadow: none; }
+
+/* Calm surfaces and clear data hierarchy, across every workflow. */
+.admin-workspace :is(.card, .map-card, .data-section, .profile-card, .table-container, .filter-bar, .summary-card, .lookahead-card) { background: #fff; border: 1px solid #dfe7ef; border-radius: 9px; box-shadow: none; }
+.admin-workspace :is(.stat-card, .summary-card, .lookahead-card) { background: #fff; border: 1px solid #dfe7ef; border-radius: 8px; box-shadow: none; transform: none; }
+.admin-workspace .stats-grid { gap: 16px; }
+.admin-workspace .stats-grid .stat-card { padding: 22px 24px; text-align: left; border-left: 1px solid #dfe7ef; }
+.admin-workspace .stats-grid .stat-number { font-family: 'Manrope', sans-serif; font-size: 31px; font-weight: 700; color: #12223b; letter-spacing: -1px; }
+.admin-workspace .stats-grid .stat-label { font-size: 12px; color: #637185; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.admin-workspace :is(.summary-card, .lookahead-card) .num { font-family: 'Manrope', sans-serif; color: #12223b; }
+.admin-workspace .table-container, .admin-workspace .table-wrap, .admin-workspace .table-wrapper { overflow-x: auto; }
+.admin-workspace :is(.tourist-table, .citizen-table, .report-table, .monitor-table, .data-table) th { background: #edf2f7; color: #58708e; font-size: 10px; font-weight: 700; letter-spacing: .7px; padding: 15px 17px; border-bottom: 1px solid #dfe7ef; }
+.admin-workspace :is(.tourist-table, .citizen-table, .report-table, .monitor-table, .data-table) td { font-size: 12px; padding: 17px; border-color: #e8edf3; color: #334b67; }
+.admin-workspace :is(.tourist-table, .citizen-table, .report-table, .monitor-table, .data-table) tbody tr:hover td { background: #f5f8fc; }
+.admin-workspace :is(.status-badge, .status, .urgency-badge) { border-radius: 5px; font-size: 10px; font-weight: 700; padding: 5px 9px; }
+.admin-workspace :is(.filter-bar, .filter-row) { gap: 12px; }
+.admin-workspace .filter-bar { padding: 18px 20px; }
+.admin-workspace .filter-label { font-size: 10px; color: #637185; letter-spacing: .5px; }
+.admin-workspace :is(.filter-input, .filter-input-sm, .search-input) { background: #fff; border: 1px solid #d2deeb; color: #334b67; border-radius: 6px; min-height: 36px; font-size: 12px; }
+.admin-workspace :is(.filter-input, .filter-input-sm, .search-input):focus { border-color: #7ba6cd; box-shadow: 0 0 0 3px #a9d6ff30; }
+.admin-workspace :is(.filter-btn, .tab-btn, .btn-filter, .button, .btn-view, .btn-back) { border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; }
+.admin-workspace :is(.btn-filter-primary, .button.primary, .btn-view) { background: #1e3a62; color: #fff; border: 1px solid #1e3a62; box-shadow: none; }
+.admin-workspace :is(.btn-filter-primary, .button.primary, .btn-view):hover { background: #294f7e; border-color: #294f7e; box-shadow: none; }
+.admin-workspace :is(.btn-back, .btn-filter-outline, .btn-filter-reset, .button.secondary) { background: #fff; color: #405773; border: 1px solid #d2deeb; box-shadow: none; }
+.admin-workspace :is(.filter-btn.active, .tab-btn.active) { background: #1e3a62; color: #fff; border-color: #1e3a62; }
+.admin-workspace .visa-tabs { border: 1px solid #dfe7ef; padding: 12px 16px; border-radius: 9px; gap: 8px; flex-wrap: wrap; }
+.admin-workspace .visa-tabs .tab-btn { border-radius: 6px; }
+.admin-workspace .visa-tabs .tab-btn.active { background: #1e3a62; color: #fff; border-color: #1e3a62; }
+.admin-workspace .visa-page .approval-card { border: 1px solid #dfe7ef !important; border-radius: 9px !important; box-shadow: none !important; }
+.admin-workspace .visa-page .approval-card > .card-header { background: #edf2f7 !important; border-color: #dfe7ef !important; }
+.admin-workspace .pagination-links :is(a, span) { border-radius: 5px; font-size: 12px; }
+.admin-workspace .pagination-links :is(a.active, span.active) { background: #1e3a62; border-color: #1e3a62; color: white; }
+.admin-workspace .empty-state { padding: 42px 24px; }
+.admin-workspace .empty-state i { color: #7b98b9; }
+.admin-workspace .empty-state h2, .admin-workspace .empty-state h3 { color: #334b67; }
+
+/* Details, review drawers, map chrome and settings. Preserve severity colours. */
+.admin-workspace :is(.map-card-header, .data-section-header, .profile-card > .card-header) { background: #fff; border-color: #dfe7ef; }
+.admin-workspace :is(.map-card-header, .data-section-header, .profile-card > .card-header) h2 { color: #12223b; font-size: 17px; }
+.admin-workspace #riskMap { border-top: 1px solid #dfe7ef; }
+.admin-workspace .drawer-panel { background: #f8fafc; box-shadow: -20px 0 70px #101f3726; }
+.admin-workspace .drawer-panel.active { right: 0; }
+.admin-workspace .drawer-header { background: #101f37; border-color: #29445f; color: #fff; }
+.admin-workspace .drawer-header :is(h2, h3, i) { color: #fff; }
+.admin-workspace .drawer-close { color: #c5dcf2; background: #ffffff10; border-radius: 5px; }
+.admin-workspace .drawer-footer { background: #edf2f7; border-color: #dfe7ef; }
+.admin-workspace :is(.detail-section, .description-text) { border-color: #dfe7ef; }
+.admin-workspace .detail-label { color: #637185; font-size: 10px; letter-spacing: .7px; }
+.admin-workspace .detail-value { color: #12223b; font-size: 13px; }
+.admin-workspace .profile-form :is(input, textarea, select) { border-color: #d2deeb; border-radius: 6px; color: #334b67; background: #fff; }
+.admin-workspace .profile-form :is(input, textarea, select):focus { border-color: #7ba6cd; box-shadow: 0 0 0 3px #a9d6ff30; }
+.admin-workspace .profile-grid { gap: 24px; }
+.admin-workspace .profile-card { overflow: hidden; }
+body.admin-workspace .profile-card .card-header .card-icon { background: #e9f1fa; color: #405e83; border-radius: 8px; }
+.admin-workspace .profile-page :is(.btn-primary, .btn-success, .btn-sm.upload) { background: #1e3a62; border-color: #1e3a62; color: white; border-radius: 6px; box-shadow: none; }
+.admin-workspace .profile-page :is(.btn-primary, .btn-success, .btn-sm.upload):hover { background: #294f7e; border-color: #294f7e; transform: none; }
+
+@media (max-width: 1100px) {
+    .admin-workspace .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .admin-workspace .profile-grid { grid-template-columns: 1fr; }
+    .admin-workspace .detail-grid, .admin-workspace .decision-actions { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+    .admin-workspace .sidebar.open ~ .main-content { left: 80px; width: calc(100% - 80px); }
+    .admin-workspace .sidebar.open { box-shadow: 20px 0 70px #101f3733; }
+    .admin-workspace .main-content { padding: 0 20px 30px; }
+    .admin-workspace .workspace-account-link span { display: none; }
+    .admin-workspace :is(.tourist-header, .citizen-header, .report-header, .risk-map-header, .profile-header) { align-items: flex-start; gap: 18px; }
+    .admin-workspace .report-chart-wrap { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+    .admin-workspace .sidebar { width: 64px; padding: 16px 7px 12px; }
+    .admin-workspace .sidebar:not(.open) .logo-details #btn { right: 9px; }
+    .admin-workspace .sidebar li a i { min-width: 48px; }
+    .admin-workspace .sidebar:not(.open) .sidebar-account .logout-form { right: 9px; }
+    .admin-workspace .main-content, .admin-workspace .sidebar.open ~ .main-content { left: 64px; width: calc(100% - 64px); padding: 0 14px 25px; }
+    .admin-workspace .workspace-topbar { gap: 8px; margin-bottom: 22px; }
+    .admin-workspace .workspace-breadcrumb { font-size: 10px; }
+    .admin-workspace .workspace-breadcrumb > span { padding: 0 4px; }
+    .admin-workspace :is(.tourist-header, .citizen-header, .report-header, .risk-map-header, .profile-header) h1, .admin-workspace .page-header h1 { font-size: 24px; }
+    .admin-workspace .stats-grid .stat-card { padding: 16px 13px; }
+    .admin-workspace .stats-grid .stat-number { font-size: 26px; }
+    .admin-workspace .filter-bar { padding: 14px; }
+    .admin-workspace .filter-group { flex-wrap: wrap; }
+    .admin-workspace .filter-input { max-width: 100%; }
+    .admin-workspace :is(.tourist-table, .citizen-table, .report-table, .monitor-table, .data-table) { min-width: 600px; }
+    .admin-workspace .lookahead-grid, .admin-workspace .chart-stats-grid { grid-template-columns: 1fr; }
+    .admin-workspace .drawer-panel { max-width: 100vw; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .admin-workspace .sidebar, .admin-workspace .main-content, .admin-workspace .sidebar *, .admin-workspace .drawer-panel { transition: none; }
+}
