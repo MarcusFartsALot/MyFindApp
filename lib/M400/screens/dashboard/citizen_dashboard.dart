@@ -1,4 +1,7 @@
+import 'package:my_find/M300/models/notification_time.dart';
+import 'package:my_find/M300/models/notification_delivery.dart';
 import 'dart:async';
+import 'package:my_find/M300/services/incident_location_access.dart';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,6 +35,9 @@ class _CitizenDashboardState extends State<CitizenDashboard> {
     super.initState();
     _currentProfile = widget.profile;
     _reportService = CommunityReportService();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) IncidentLocationAccess.requestAtLogin(context);
+    });
   }
 
   /// Refreshes profile state from database
@@ -428,19 +434,27 @@ class _DynamicNotificationBell extends StatefulWidget {
       _DynamicNotificationBellState();
 }
 
-class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
+class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
+    with WidgetsBindingObserver {
   final _supabase = Supabase.instance.client;
   final List<Map<String, dynamic>> _pendingPopups = [];
-  final Set<String> _knownNotificationIds = {};
+  final _delivery = NotificationDelivery();
+  Timer? _fallbackTimer;
+  bool _checking = false;
+  bool _foreground = true;
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _notifications = const [];
-  bool _receivedInitialSnapshot = false;
   bool _showingPopup = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _subscribeToNotifications();
+    _refreshNotifications();
+    _fallbackTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_foreground) _refreshNotifications();
+    });
   }
 
   @override
@@ -448,18 +462,50 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profile.id != widget.profile.id) {
       _subscription?.cancel();
-      _knownNotificationIds.clear();
+      _delivery.clear();
       _pendingPopups.clear();
       _notifications = const [];
-      _receivedInitialSnapshot = false;
       _subscribeToNotifications();
+      _refreshNotifications();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fallbackTimer?.cancel();
     _subscription?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) {
+      _refreshNotifications();
+      _showNextPopup();
+    }
+  }
+
+  Future<void> _refreshNotifications() async {
+    if (_checking || !mounted) return;
+    _checking = true;
+    final owner = widget.profile.id;
+    try {
+      final records = await _supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', owner)
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 10));
+      if (mounted && owner == widget.profile.id) {
+        _handleNotificationSnapshot(List<Map<String, dynamic>>.from(records));
+      }
+    } catch (_) {
+      // Realtime remains active; retry on the next foreground check/resume.
+    } finally {
+      _checking = false;
+    }
   }
 
   void _subscribeToNotifications() {
@@ -478,41 +524,32 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
   void _handleNotificationSnapshot(List<Map<String, dynamic>> data) {
     final notifications = List<Map<String, dynamic>>.from(data)
       ..sort((a, b) {
-        final first = DateTime.tryParse(a['created_at']?.toString() ?? '');
-        final second = DateTime.tryParse(b['created_at']?.toString() ?? '');
+        final first = NotificationTime.parse(a['created_at']?.toString() ?? '');
+        final second = NotificationTime.parse(
+          b['created_at']?.toString() ?? '',
+        );
         return (second ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
           first ?? DateTime.fromMillisecondsSinceEpoch(0),
         );
       });
 
-    if (!_receivedInitialSnapshot) {
-      _receivedInitialSnapshot = true;
-      _knownNotificationIds.addAll(
-        notifications.map((item) => item['id']?.toString() ?? ''),
-      );
-    } else {
-      final newAlerts = notifications.where((item) {
-        final id = item['id']?.toString() ?? '';
-        return id.isNotEmpty &&
-            !_knownNotificationIds.contains(id) &&
-            item['is_read'] == false &&
-            item['type'] == 'Alert';
-      }).toList();
-
-      _knownNotificationIds.addAll(
-        notifications.map((item) => item['id']?.toString() ?? ''),
-      );
-      _pendingPopups.addAll(newAlerts.reversed);
-    }
+    _pendingPopups.removeWhere(
+      (queued) => notifications.any(
+        (item) => item['id'] == queued['id'] && item['is_read'] == true,
+      ),
+    );
+    _pendingPopups.addAll(_delivery.takeUnreadAlerts(notifications).reversed);
 
     if (mounted) {
       setState(() => _notifications = notifications);
-      _showNextPopup();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNextPopup());
     }
   }
 
   Future<void> _showNextPopup() async {
-    if (_showingPopup || _pendingPopups.isEmpty || !mounted) return;
+    if (_showingPopup || _pendingPopups.isEmpty || !mounted || !_foreground) {
+      return;
+    }
     _showingPopup = true;
     final notification = _pendingPopups.removeAt(0);
     final title = notification['title']?.toString() ?? 'Report update';
@@ -533,7 +570,7 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -595,8 +632,7 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
     );
 
     if (openNotifications == true && mounted) {
-      await _markAsRead(notification);
-      if (!mounted) return;
+      unawaited(_markAsRead(notification));
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => NotificationsScreen(profile: widget.profile),
@@ -618,7 +654,8 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell> {
           .from('notifications')
           .update({'is_read': true})
           .eq('id', id)
-          .eq('user_id', widget.profile.id);
+          .eq('user_id', widget.profile.id)
+          .timeout(const Duration(seconds: 10));
     } catch (error) {
       debugPrint('Could not mark popup notification as read: $error');
     }

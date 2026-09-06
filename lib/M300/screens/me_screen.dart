@@ -84,12 +84,14 @@ class MeScreen extends StatelessWidget {
                             color: Color(0xFF64748B),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            'Nickname: $nickname',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFF64748B),
+                          Expanded(
+                            child: Text(
+                              'Nickname: $nickname',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
+                              ),
                             ),
                           ),
                         ],

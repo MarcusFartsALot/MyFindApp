@@ -107,7 +107,7 @@ class CommunityReportService {
         'message': message,
         'type': type,
         'is_read': false,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': DateTime.now().toUtc().toIso8601String(),
       });
     } catch (e) {
       debugPrint('Failed to create notification: $e');
@@ -132,10 +132,15 @@ class CommunityReportService {
   /// Fetches a single incident report by its unique Ticket ID
   Future<Map<String, dynamic>?> getReportByTicket(String ticketId) async {
     try {
+      final email = _supabase.auth.currentUser?.email;
+      if (email == null) {
+        throw AppException('Please sign in to view this ticket.');
+      }
       final response = await _supabase
           .from('incident_reports')
           .select()
           .eq('ticket_id', ticketId)
+          .eq('email', email)
           .maybeSingle();
 
       return response;
@@ -235,6 +240,10 @@ class CommunityReportService {
     required List<String> mediaPaths,
   }) async {
     try {
+      final email = _supabase.auth.currentUser?.email;
+      if (email == null) {
+        throw AppException('Please sign in before updating a report.');
+      }
       final updatedReports = await _supabase
           .from('incident_reports')
           .update({
@@ -247,6 +256,7 @@ class CommunityReportService {
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', reportId)
+          .eq('email', email)
           .eq('status', 'Pending Review')
           .select('id');
 

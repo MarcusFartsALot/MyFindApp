@@ -1,3 +1,5 @@
+import '../widgets/load_failure_card.dart';
+import '../widgets/adaptive_pair.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -228,7 +230,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
   final _supabase = Supabase.instance.client;
   final _locationSearchController = TextEditingController();
-  final _insightsSheetController = DraggableScrollableController();
+  bool _searchExpanded = false;
   Timer? _locationSearchDebounce;
   Timer? _riskRefreshDebounce;
   RealtimeChannel? _riskReportsChannel;
@@ -245,15 +247,15 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
   bool _searchingLocation = false;
   bool _loadingLocationSuggestions = false;
   bool _suggestionSearchCompleted = false;
-  bool _insightsCoverMapControls = false;
   int _suggestionRequestId = 0;
   bool _loading = true;
+  bool _fetchingRisk = false;
+  bool _refreshFailed = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _insightsSheetController.addListener(_handleInsightsSheetChanged);
     _prepareZoneImages();
     _loadRiskData();
     _listenForRiskReportChanges();
@@ -267,9 +269,6 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     if (riskReportsChannel != null) {
       _supabase.removeChannel(riskReportsChannel);
     }
-    _insightsSheetController
-      ..removeListener(_handleInsightsSheetChanged)
-      ..dispose();
     _locationSearchController.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -292,13 +291,6 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
         .subscribe();
   }
 
-  void _handleInsightsSheetChanged() {
-    if (!_insightsSheetController.isAttached) return;
-    final coversControls = _insightsSheetController.size > 0.46;
-    if (coversControls == _insightsCoverMapControls || !mounted) return;
-    setState(() => _insightsCoverMapControls = coversControls);
-  }
-
   Future<void> _searchLocation() async {
     final query = _locationSearchController.text.trim();
     if (query.isEmpty || _searchingLocation) return;
@@ -314,7 +306,9 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
     try {
       // Local results are refined with a Kuala Lumpur-qualified query.
-      final matches = await _findSearchLocations(query);
+      final matches = await _findSearchLocations(
+        query,
+      ).timeout(const Duration(seconds: 12));
       if (!mounted) return;
       if (matches.isEmpty) {
         _showSearchMessage('No matching location was found.');
@@ -407,17 +401,18 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
   Future<void> _loadLocationSuggestions(String query, int requestId) async {
     try {
-      final localMatches = await _findSearchLocations(query);
+      final localMatches = await _findSearchLocations(
+        query,
+      ).timeout(const Duration(seconds: 12));
       final suggestions = <_LocationSuggestion>[];
       final seen = <String>{};
 
       for (final location in localMatches.take(5)) {
         String label = query;
         try {
-          final placemarks = await Geocoding().placemarkFromCoordinates(
-            location.latitude,
-            location.longitude,
-          );
+          final placemarks = await Geocoding()
+              .placemarkFromCoordinates(location.latitude, location.longitude)
+              .timeout(const Duration(seconds: 2));
           if (placemarks.isNotEmpty) {
             final address = _formatPlacemark(placemarks.first, fallback: query);
             label = address.toLowerCase().contains(query.toLowerCase())
@@ -562,6 +557,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
   }
 
   Future<void> _loadRiskData({bool showLoading = true}) async {
+    if (_fetchingRisk) return;
+    _fetchingRisk = true;
     if (mounted && showLoading) {
       setState(() {
         _loading = true;
@@ -578,7 +575,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
             'urgency_level,status,created_at',
           )
           .eq('status', 'Validated')
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
 
       final reports = List<Map<String, dynamic>>.from(
         data,
@@ -592,6 +590,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
       if (!mounted) return;
       setState(() {
+        _error = null;
+        _refreshFailed = false;
         _validatedReports = reports;
         _zones = zones;
         _zoneMarkerImages = Map.fromEntries(markerEntries);
@@ -601,11 +601,14 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
       if (!mounted) return;
       if (showLoading) {
         setState(() {
-          _error = 'Unable to load validated risk data. Pull down to retry.';
+          _error =
+              'Could not reach the service. Check Wi-Fi or mobile data and try again.';
           _loading = false;
         });
       }
-      debugPrint('Risk map load error: $error');
+      if (!showLoading) setState(() => _refreshFailed = true);
+    } finally {
+      _fetchingRisk = false;
     }
   }
 
@@ -702,7 +705,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
           icon:
               _searchedLocationMarker ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          anchor: const Offset(0.5, 1),
+          anchor: const Offset(0.5, 0.8625),
           zIndexInt: 10,
           infoWindow: InfoWindow(
             title: _searchedLocationLabel ?? 'Searched location',
@@ -714,79 +717,51 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
   }
 
   Future<BitmapDescriptor> _createZoneMarker(_RiskZone zone) async {
-    const width = 164;
-    const height = 60;
+    const width = 88;
+    const height = 96;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final background = Color.alphaBlend(
-      zone.risk.color.withValues(alpha: 0.14),
-      Colors.white.withValues(alpha: 0.78),
-    );
-
-    final shadowRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(5, 4, width - 10, 45),
-      const Radius.circular(22),
-    );
-    canvas.drawRRect(
-      shadowRect.shift(const Offset(0, 2)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    canvas.drawRRect(shadowRect, Paint()..color = background);
-    canvas.drawRRect(
-      shadowRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = zone.risk.color.withValues(alpha: 0.72),
-    );
-
+    // A compact count badge with a precise anchor, not a stock map pin.
     final pointer = Path()
-      ..moveTo((width / 2) - 8, 48)
-      ..lineTo(width / 2, 58)
-      ..lineTo((width / 2) + 8, 48)
+      ..moveTo(34, 73)
+      ..lineTo(44, 92)
+      ..lineTo(54, 73)
       ..close();
-    canvas.drawPath(pointer, Paint()..color = background);
+    canvas.drawPath(pointer, Paint()..color = zone.risk.color);
+    canvas.drawCircle(const Offset(44, 42), 38, Paint()..color = Colors.white);
     canvas.drawCircle(
-      const Offset(27, 26),
-      13,
+      const Offset(44, 42),
+      33,
       Paint()..color = zone.risk.color,
     );
-
-    final countPainter = TextPainter(
+    final ink = zone.risk == _RiskLevel.yellow
+        ? const Color(0xFF422006)
+        : Colors.white;
+    final count = TextPainter(
       text: TextSpan(
         text: '${zone.count}',
         style: TextStyle(
-          color: zone.risk == _RiskLevel.yellow
-              ? const Color(0xFF422006)
-              : Colors.white,
-          fontSize: 13,
+          color: ink,
+          fontSize: zone.count > 999 ? 19 : 27,
           fontWeight: FontWeight.w900,
         ),
       ),
       textDirection: TextDirection.ltr,
-    )..layout();
-    countPainter.paint(
-      canvas,
-      Offset(27 - (countPainter.width / 2), 26 - (countPainter.height / 2)),
-    );
-
-    final labelPainter = TextPainter(
+    )..layout(maxWidth: 62);
+    count.paint(canvas, Offset(44 - count.width / 2, 18));
+    final caption = TextPainter(
       text: TextSpan(
-        text: zone.count == 1 ? 'VALIDATED REPORT' : 'VALIDATED REPORTS',
-        style: const TextStyle(
-          color: Color(0xFF334155),
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.2,
+        text: zone.count == 1 ? 'REPORT' : 'REPORTS',
+        style: TextStyle(
+          color: ink,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
         ),
       ),
-      maxLines: 1,
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: width - 58);
-    labelPainter.paint(canvas, Offset(49, 26 - (labelPainter.height / 2)));
-
+    )..layout();
+    caption.paint(canvas, Offset(44 - caption.width / 2, 51));
     final image = await recorder.endRecording().toImage(width, height);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
@@ -794,85 +769,57 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     return BytesMapBitmap(
       bytes.buffer.asUint8List(),
       bitmapScaling: MapBitmapScaling.auto,
-      width: 132,
+      width: 64,
     );
   }
 
   Future<BitmapDescriptor> _createSearchMarker(String query) async {
-    final displayLabel = query.length > 24
-        ? '${query.substring(0, 22)}…'
-        : query;
-    final labelPainter = TextPainter(
+    final label = TextPainter(
       text: TextSpan(
-        text: displayLabel.toUpperCase(),
+        text: query,
         style: const TextStyle(
-          color: Color(0xFF0F3B71),
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.4,
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
         ),
       ),
       maxLines: 1,
+      ellipsis: '…',
       textDirection: TextDirection.ltr,
-    )..layout();
-
-    final width = (labelPainter.width + 70).clamp(130, 250).ceil();
-    const height = 64;
+    )..layout(maxWidth: 190);
+    final width = (label.width + 40).ceil();
+    const height = 80;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final background = Color.alphaBlend(
-      const Color(0xFF38BDF8).withValues(alpha: 0.14),
-      Colors.white.withValues(alpha: 0.82),
-    );
     final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(5, 4, width - 10, 47),
-      const Radius.circular(24),
+      Rect.fromLTWH(2, 2, width - 4, 42),
+      const Radius.circular(14),
     );
-    canvas.drawRRect(
-      body.shift(const Offset(0, 2)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.2)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    canvas.drawRRect(body, Paint()..color = background);
+    canvas.drawRRect(body, Paint()..color = const Color(0xFF243C91));
     canvas.drawRRect(
       body,
       Paint()
+        ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0xFF0284C7).withValues(alpha: 0.68),
+        ..strokeWidth = 2,
     );
-
-    final pointer = Path()
-      ..moveTo((width / 2) - 8, 50)
-      ..lineTo(width / 2, 62)
-      ..lineTo((width / 2) + 8, 50)
-      ..close();
-    canvas.drawPath(pointer, Paint()..color = background);
-
-    canvas.drawCircle(
-      const Offset(28, 27),
-      14,
-      Paint()..color = const Color(0xFF0284C7).withValues(alpha: 0.9),
-    );
-    canvas.drawCircle(
-      const Offset(26, 25),
-      5,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
-        ..color = Colors.white,
+    label.paint(
+      canvas,
+      Offset((width - label.width) / 2, 23 - label.height / 2),
     );
     canvas.drawLine(
-      const Offset(30, 29),
-      const Offset(34, 33),
+      Offset(width / 2, 44),
+      Offset(width / 2, 67),
       Paint()
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round
-        ..color = Colors.white,
+        ..color = const Color(0xFF243C91)
+        ..strokeWidth = 3,
     );
-    labelPainter.paint(canvas, Offset(50, 27 - (labelPainter.height / 2)));
-
+    canvas.drawCircle(Offset(width / 2, 69), 9, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      Offset(width / 2, 69),
+      6,
+      Paint()..color = const Color(0xFF243C91),
+    );
     final image = await recorder.endRecording().toImage(width, height);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
@@ -880,7 +827,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     return BytesMapBitmap(
       bytes.buffer.asUint8List(),
       bitmapScaling: MapBitmapScaling.auto,
-      width: width * 0.78,
+      width: width.toDouble(),
     );
   }
 
@@ -890,7 +837,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: const BoxDecoration(
             color: Colors.white,
             border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
@@ -913,57 +860,41 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHeader() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [Color(0xFF243C91), Color(0xFF365AB0)],
+      ),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: const Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF6FF),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.map_outlined, color: Color(0xFF1E3A8A)),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
+        Icon(Icons.verified_outlined, size: 23, color: Colors.white),
+        SizedBox(width: 10),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Kuala Lumpur Risk Map',
+                'KUALA LUMPUR ONLY',
                 style: TextStyle(
-                  fontSize: 18,
+                  color: Colors.white,
+                  fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  letterSpacing: 0.8,
                 ),
               ),
-              SizedBox(height: 3),
               Text(
-                'Community safety patterns from validated reports only.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                'Zones show validated incident reports.',
+                style: TextStyle(color: Color(0xFFE2E8FF), fontSize: 11),
               ),
             ],
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFDCFCE7),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Text(
-            'VALIDATED',
-            style: TextStyle(
-              color: Color(0xFF15803D),
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
       ],
-    );
-  }
+    ),
+  );
 
   Widget _buildSummaryGrid() {
     return Column(
@@ -1026,9 +957,9 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
       child: Row(
         children: [
@@ -1092,56 +1023,51 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              SizedBox.square(
-                dimension: 112,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CustomPaint(
-                      size: const Size.square(112),
-                      painter: _RiskDonutPainter(
-                        yellow: yellow,
-                        orange: orange,
-                        red: red,
+          AdaptivePair(
+            first: SizedBox.square(
+              dimension: 112,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(
+                    size: const Size.square(112),
+                    painter: _RiskDonutPainter(
+                      yellow: yellow,
+                      orange: orange,
+                      red: red,
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$_insideKlCount',
+                        style: const TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
                       ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '$_insideKlCount',
-                          style: const TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
+                      const Text(
+                        'IN KL',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF64748B),
                         ),
-                        const Text(
-                          'IN KL',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(width: 18),
-              Expanded(
-                child: Column(
-                  children: [
-                    _legendRow(_RiskLevel.red, red, '10+ per zone'),
-                    _legendRow(_RiskLevel.orange, orange, '5–9 per zone'),
-                    _legendRow(_RiskLevel.yellow, yellow, '1–4 per zone'),
-                  ],
-                ),
-              ),
-            ],
+            ),
+            second: Column(
+              children: [
+                _legendRow(_RiskLevel.red, red, '10+ per zone'),
+                _legendRow(_RiskLevel.orange, orange, '5–9 per zone'),
+                _legendRow(_RiskLevel.yellow, yellow, '1–4 per zone'),
+              ],
+            ),
           ),
         ],
       ),
@@ -1217,43 +1143,125 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
             mapToolbarEnabled: false,
           ),
         ),
-        Positioned(top: 12, left: 14, right: 14, child: _buildLocationSearch()),
-        Positioned(top: 72, left: 8, right: 8, child: _buildMapFilters()),
         Positioned(
-          top: 124,
+          top: 10,
+          left: 10,
+          right: 10,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SizeTransition(
+                          sizeFactor: animation,
+                          axis: Axis.horizontal,
+                          child: child,
+                        ),
+                      ),
+                      child: _searchExpanded
+                          ? _buildLocationSearch()
+                          : Align(
+                              alignment: Alignment.centerLeft,
+                              child: Material(
+                                color: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: const BorderSide(
+                                    color: Color(0xFFCBD5E1),
+                                  ),
+                                ),
+                                child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF243C91),
+                                  ),
+                                  onPressed: () =>
+                                      setState(() => _searchExpanded = true),
+                                  icon: const Icon(Icons.search_rounded),
+                                  label: const Text('Find a place'),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              _buildMapFilters(),
+              if (_searchExpanded) _buildLocationSuggestions(),
+            ],
+          ),
+        ),
+        Positioned(right: 10, bottom: 78, child: _buildMapButtons()),
+        if (_refreshFailed)
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 70,
+            child: Material(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                dense: true,
+                title: const Text('Could not refresh · showing earlier data'),
+                trailing: IconButton(
+                  tooltip: 'Retry refresh',
+                  onPressed: () => _loadRiskData(showLoading: false),
+                  icon: const Icon(Icons.refresh),
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          left: 12,
           right: 12,
-          child: IgnorePointer(
-            ignoring: _insightsCoverMapControls,
-            child: AnimatedOpacity(
-              opacity: _insightsCoverMapControls ? 0 : 1,
-              duration: const Duration(milliseconds: 160),
-              child: _buildMapButtons(),
+          bottom: 12,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF243C91),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+              ),
+              onPressed: _showInsights,
+              icon: const Icon(Icons.insights_rounded, size: 20),
+              label: Text('Insights · $_insideKlCount reports in KL'),
             ),
           ),
         ),
-        Positioned(
-          top: 68,
-          left: 14,
-          right: 14,
-          child: _buildLocationSuggestions(),
-        ),
-        _buildInsightsSheet(),
       ],
     );
   }
 
   Widget _buildMapFilters() {
     return SizedBox(
-      height: 42,
+      height: 48,
       child: Center(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               _filterChip('All', null),
-              ..._RiskLevel.values.map((risk) => _filterChip(risk.label, risk)),
+              ..._RiskLevel.values.map(
+                (risk) => _filterChip(
+                  '${risk.label} ${switch (risk) {
+                    _RiskLevel.yellow => '1–4',
+                    _RiskLevel.orange => '5–9',
+                    _RiskLevel.red => '10+',
+                  }}',
+                  risk,
+                ),
+              ),
               _buildBoundaryLabel(),
             ],
           ),
@@ -1264,12 +1272,10 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
   Widget _buildLocationSearch() {
     final query = _locationSearchController.text.trim();
-    final showingCurrentResult =
-        _searchedLocation != null &&
-        _searchedLocationLabel?.toLowerCase() == query.toLowerCase();
+
     return Material(
-      color: Colors.white.withValues(alpha: 0.78),
-      elevation: 5,
+      color: Colors.white,
+      elevation: 0,
       shadowColor: Colors.black26,
       borderRadius: BorderRadius.circular(24),
       child: SizedBox(
@@ -1298,10 +1304,14 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
           decoration: InputDecoration(
             hintText: 'Search a place or address',
             hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            prefixIcon: const Icon(
-              Icons.search_rounded,
-              color: Color(0xFF1E3A8A),
-              size: 21,
+            prefixIcon: IconButton(
+              tooltip: 'Close search',
+              onPressed: () {
+                FocusScope.of(context).unfocus();
+                _clearLocationSearch();
+                setState(() => _searchExpanded = false);
+              },
+              icon: const Icon(Icons.close_rounded, color: Color(0xFF243C91)),
             ),
             suffixIcon: _searchingLocation
                 ? const Padding(
@@ -1312,20 +1322,11 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
                     ),
                   )
                 : IconButton(
-                    tooltip: showingCurrentResult
-                        ? 'Clear search'
-                        : 'Search location',
-                    onPressed: showingCurrentResult
-                        ? _clearLocationSearch
-                        : query.isEmpty
-                        ? null
-                        : _searchLocation,
-                    icon: Icon(
-                      showingCurrentResult
-                          ? Icons.close_rounded
-                          : Icons.arrow_forward_rounded,
-                      color: const Color(0xFF334155),
-                      size: 20,
+                    tooltip: 'Search location',
+                    onPressed: query.isEmpty ? null : _searchLocation,
+                    icon: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Color(0xFF243C91),
                     ),
                   ),
             border: InputBorder.none,
@@ -1545,45 +1546,64 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     );
   }
 
-  Widget _buildInsightsSheet() {
-    return DraggableScrollableSheet(
-      controller: _insightsSheetController,
-      initialChildSize: 0.23,
-      minChildSize: 0.21,
-      maxChildSize: 0.72,
-      snap: true,
-      snapSizes: const [0.23, 0.52, 0.72],
-      builder: (context, scrollController) {
-        return Material(
-          color: Colors.white,
-          elevation: 18,
-          shadowColor: Colors.black38,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          clipBehavior: Clip.antiAlias,
-          child: CustomScrollView(
-            controller: scrollController,
-            physics: const ClampingScrollPhysics(),
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _InsightsHeaderDelegate(
-                  totalReports: _validatedReports.length,
-                ),
+  Future<void> _showInsights() async {
+    FocusScope.of(context).unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.8,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Community risk insights',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-                sliver: SliverList.list(
-                  children: [
-                    _buildSummaryGrid(),
-                    const SizedBox(height: 14),
-                    _buildRiskBreakdown(),
-                  ],
-                ),
+              const SizedBox(height: 4),
+              const Text(
+                'Swipe down to return to the map',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 16),
+              _metricCard(
+                'Total validated reports',
+                '${_validatedReports.length}',
+                Icons.verified_outlined,
+                const Color(0xFF243C91),
+              ),
+              const SizedBox(height: 12),
+              _buildSummaryGrid(),
+              const SizedBox(height: 14),
+              _buildRiskBreakdown(),
+              const SizedBox(height: 12),
+              const Text(
+                'Numbers on the map show validated reports per zone, not a prediction of danger.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -1608,7 +1628,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
         selectedColor: (risk?.color ?? const Color(0xFF1E3A8A)).withValues(
           alpha: 0.84,
         ),
-        elevation: selected ? 5 : 3,
+        elevation: 0,
         pressElevation: 6,
         shadowColor: Colors.black26,
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
@@ -1626,152 +1646,15 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
               : selected
               ? Colors.white
               : const Color(0xFF475569),
-          fontSize: 9,
-          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
         ),
         onSelected: (_) => setState(() => _selectedRisk = risk),
       ),
     );
   }
 
-  Widget _buildErrorCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFCA5A5)),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.cloud_off_rounded, color: Color(0xFFDC2626)),
-          const SizedBox(height: 8),
-          Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
-          ),
-          TextButton(onPressed: _loadRiskData, child: const Text('Try Again')),
-        ],
-      ),
-    );
-  }
-}
-
-class _InsightsHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final int totalReports;
-
-  const _InsightsHeaderDelegate({required this.totalReports});
-
-  @override
-  double get minExtent => 138;
-
-  @override
-  double get maxExtent => 138;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return ColoredBox(
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: Column(
-          children: [
-            Container(
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(
-                color: const Color(0xFFCBD5E1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Row(
-              children: [
-                Icon(
-                  Icons.insights_rounded,
-                  size: 20,
-                  color: Color(0xFF1E3A8A),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Community risk insights',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEFF6FF),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.verified_outlined,
-                      color: Color(0xFF1E3A8A),
-                      size: 19,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$totalReports',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const Text(
-                          'Total validated reports',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.trending_up_rounded,
-                    color: Color(0xFF94A3B8),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _InsightsHeaderDelegate oldDelegate) {
-    return oldDelegate.totalReports != totalReports;
-  }
+  Widget _buildErrorCard() => LoadFailureCard(onRetry: _loadRiskData);
 }
 
 class _LocationSuggestion {

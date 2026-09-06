@@ -1,3 +1,5 @@
+import 'package:my_find/M300/models/notification_time.dart';
+import '../widgets/load_failure_card.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -14,7 +16,17 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with WidgetsBindingObserver {
+  Timer? _fallbackTimer;
+  bool _foreground = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) _fetchNotifications(silent: true);
+  }
+
   final _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _allNotifications = [];
   bool _isLoading = true;
@@ -25,6 +37,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.initState();
     _fetchNotifications();
     _listenForNotifications();
+    WidgetsBinding.instance.addObserver(this);
+    _fallbackTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_foreground) _fetchNotifications(silent: true);
+    });
   }
 
   void _listenForNotifications() {
@@ -36,10 +52,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           (data) {
             final notifications = List<Map<String, dynamic>>.from(data)
               ..sort((a, b) {
-                final first = DateTime.tryParse(
+                final first = NotificationTime.parse(
                   a['created_at'] as String? ?? '',
                 );
-                final second = DateTime.tryParse(
+                final second = NotificationTime.parse(
                   b['created_at'] as String? ?? '',
                 );
                 return (second ?? DateTime.fromMillisecondsSinceEpoch(0))
@@ -48,6 +64,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
             if (mounted) {
               setState(() {
+                _loadFailed = false;
                 _allNotifications = notifications;
                 _isLoading = false;
               });
@@ -61,64 +78,52 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fallbackTimer?.cancel();
     _notificationSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _fetchNotifications() async {
+  bool _loadFailed = false;
+  bool _fetching = false;
+
+  Future<void> _fetchNotifications({bool silent = false}) async {
+    if (_fetching) return;
+    _fetching = true;
+    if (mounted && !silent) {
+      setState(() {
+        _loadFailed = false;
+        _isLoading = true;
+      });
+    }
     try {
       final data = await _supabase
           .from('notifications')
           .select()
           .eq('user_id', widget.profile.id)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 15));
 
       if (mounted) {
         setState(() {
+          _loadFailed = false;
           _allNotifications = List<Map<String, dynamic>>.from(data);
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-      debugPrint("Error fetching notifications: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (!silent) _loadFailed = true;
+        });
+      }
+    } finally {
+      _fetching = false;
     }
   }
 
-  /// Formats ISO timestamp to a clean date and time string
-  String _formatDateTime(String? isoString) {
-    if (isoString == null || isoString.isEmpty) return 'N/A';
-    try {
-      final date = DateTime.parse(isoString).toLocal();
-      final List<String> months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      final String month = months[date.month - 1];
-      final String day = date.day.toString().padLeft(2, '0');
-      final String year = date.year.toString();
-
-      final int hourRaw = date.hour;
-      final String period = hourRaw >= 12 ? 'PM' : 'AM';
-      final int hour12 = hourRaw % 12 == 0 ? 12 : hourRaw % 12;
-      final String hour = hour12.toString().padLeft(2, '0');
-      final String minute = date.minute.toString().padLeft(2, '0');
-
-      return "$day $month $year • $hour:$minute $period";
-    } catch (_) {
-      return isoString;
-    }
-  }
+  String _formatDateTime(String? value) => NotificationTime.format(value);
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +147,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),
           appBar: AppBar(
+            centerTitle: true,
             title: const Text(
               'Notifications & Activity',
               style: TextStyle(
@@ -170,14 +176,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
+              isScrollable: false,
+              tabAlignment: TabAlignment.fill,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 6),
               tabs: [
                 Tab(
+                  height: (MediaQuery.textScalerOf(context).scale(13) * 2 + 18)
+                      .clamp(48, 160)
+                      .toDouble(),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(Icons.notifications_active_outlined, size: 18),
                       const SizedBox(width: 6),
-                      Text('Notifications ($unreadAlerts)'),
+                      Flexible(
+                        child: Text(
+                          'Notifications ($unreadAlerts)',
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -187,7 +205,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     children: [
                       const Icon(Icons.history_rounded, size: 18),
                       const SizedBox(width: 6),
-                      Text('Activities ($unreadActivities)'),
+                      Flexible(
+                        child: Text(
+                          'Activities ($unreadActivities)',
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -197,6 +221,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           body: _isLoading
               ? const Center(
                   child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
+                )
+              : _loadFailed
+              ? SingleChildScrollView(
+                  child: LoadFailureCard(onRetry: _fetchNotifications),
                 )
               : TabBarView(
                   physics: const BouncingScrollPhysics(),
@@ -370,12 +398,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               color: Color(0xFF94A3B8),
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              _formatDateTime(item['created_at']),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8),
+                            Expanded(
+                              child: Text(
+                                _formatDateTime(item['created_at']),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF94A3B8),
+                                ),
                               ),
                             ),
                           ],

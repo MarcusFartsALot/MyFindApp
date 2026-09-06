@@ -113,7 +113,7 @@ class _IncidentLocationPickerPageState
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Choose Incident Location',
+          'Incident location',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -125,22 +125,6 @@ class _IncidentLocationPickerPageState
           icon: const Icon(Icons.close, color: Color(0xFF0F172A)),
           onPressed: _finish,
         ),
-        actions: [
-          TextButton.icon(
-            onPressed: _hasPin ? () => _finish(_pickedLocation) : null,
-            icon: const Icon(
-              Icons.check_circle_rounded,
-              color: Color(0xFF1E3A8A),
-            ),
-            label: const Text(
-              'Confirm Location',
-              style: TextStyle(
-                color: Color(0xFF1E3A8A),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -158,8 +142,10 @@ class _IncidentLocationPickerPageState
             },
             onTap: (point) {
               if (_closing) return;
+              _searchGeneration++;
               FocusManager.instance.primaryFocus?.unfocus();
               setState(() {
+                _searching = false;
                 _pickedLocation = point;
                 _hasPin = true;
                 _searchError = null;
@@ -170,6 +156,18 @@ class _IncidentLocationPickerPageState
                     Marker(
                       markerId: const MarkerId('incident-location-picker'),
                       position: _pickedLocation,
+                      draggable: true,
+                      onDragEnd: (point) {
+                        _searchGeneration++;
+                        setState(() {
+                          _pickedLocation = point;
+                          _searching = false;
+                          _searchError = null;
+                        });
+                      },
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueAzure,
+                      ),
                     ),
                   }
                 : const <Marker>{},
@@ -181,7 +179,7 @@ class _IncidentLocationPickerPageState
             myLocationEnabled: widget.myLocationEnabled,
             myLocationButtonEnabled: widget.myLocationEnabled,
             mapToolbarEnabled: false,
-            padding: const EdgeInsets.only(top: 86, bottom: 100),
+            padding: const EdgeInsets.only(top: 86, bottom: 180),
           ),
           Positioned(
             top: 14,
@@ -195,6 +193,13 @@ class _IncidentLocationPickerPageState
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: TextField(
                   controller: _searchController,
+                  onChanged: (_) {
+                    _searchGeneration++;
+                    setState(() {
+                      _searching = false;
+                      _searchError = null;
+                    });
+                  },
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _searchLocation(),
                   decoration: InputDecoration(
@@ -251,12 +256,12 @@ class _IncidentLocationPickerPageState
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
+                    const Row(
                       children: [
                         Icon(
                           Icons.touch_app_rounded,
@@ -264,19 +269,42 @@ class _IncidentLocationPickerPageState
                           size: 18,
                         ),
                         SizedBox(width: 8),
-                        Text(
-                          'Tap map to update pin position',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Text(
+                            'Tap map to update pin position',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 8),
                     Text(
-                      'Move the pin, then confirm this location.',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      _hasPin
+                          ? '${_pickedLocation.latitude.toStringAsFixed(5)}, ${_pickedLocation.longitude.toStringAsFixed(5)}\nCheck the pin marks where the incident happened.'
+                          : 'Search for a place or tap the map to select a pin.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E3A8A),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: _hasPin && !_searching
+                            ? () => _finish(_pickedLocation)
+                            : null,
+                        icon: const Icon(Icons.check_circle_outline_rounded),
+                        label: const Text('Confirm location'),
+                      ),
                     ),
                   ],
                 ),

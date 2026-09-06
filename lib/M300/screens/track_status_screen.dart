@@ -1,5 +1,7 @@
+import '../widgets/load_failure_card.dart';
+import '../widgets/ticket_card.dart';
+import '../widgets/ticket_filter_chip.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/incident_report_model.dart';
 import '../services/community_report_service.dart';
@@ -74,9 +76,46 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
   final TextEditingController _ticketController = TextEditingController();
 
   bool _isLoadingList = true;
+  bool _loadFailed = false;
+  bool _openingTicket = false;
   List<Map<String, dynamic>> _myReports = [];
   _TicketStatusFilter _statusFilter = _TicketStatusFilter.all;
   _TicketTimelineFilter _timelineFilter = _TicketTimelineFilter.all;
+
+  Future<void> _openTicket(String ticketId, {required bool edit}) async {
+    if (_openingTicket) return;
+    setState(() => _openingTicket = true);
+    try {
+      final record = await widget.service.getReportByTicket(ticketId);
+      if (!mounted) return;
+      if (record == null) {
+        throw StateError('Ticket is unavailable. Refresh your list.');
+      }
+      final model = IncidentReportModel.fromJson(record);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => EditReportScreen(
+            report: model,
+            service: widget.service,
+            readOnly: !edit || !model.canEdit,
+          ),
+        ),
+      );
+      if (mounted) await _fetchUserReports();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Unable to open this ticket. Please refresh and try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingTicket = false);
+    }
+  }
 
   @override
   void initState() {
@@ -90,75 +129,31 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
     super.dispose();
   }
 
+  bool _fetching = false;
+
   /// Fetch all reports for the current user
   Future<void> _fetchUserReports() async {
-    setState(() => _isLoadingList = true);
+    if (_fetching) return;
+    _fetching = true;
+    setState(() {
+      _isLoadingList = true;
+      _loadFailed = false;
+    });
     try {
-      final reports = await widget.service.getUserReports(widget.userEmail);
+      final reports = await widget.service
+          .getUserReports(widget.userEmail)
+          .timeout(const Duration(seconds: 15));
       if (mounted) {
         setState(() {
           _myReports = reports;
         });
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load past tickets: $e'),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
-      }
+    } catch (_) {
+      if (mounted) setState(() => _loadFailed = true);
     } finally {
+      _fetching = false;
       if (mounted) setState(() => _isLoadingList = false);
     }
-  }
-
-  Widget _buildStatusBadge(IncidentReportStatus status) {
-    Color bg;
-    Color fg;
-    IconData icon;
-
-    switch (status) {
-      case IncidentReportStatus.validated:
-        bg = const Color(0xFFDCFCE7);
-        fg = const Color(0xFF15803D);
-        icon = Icons.verified_rounded;
-        break;
-      case IncidentReportStatus.rejected:
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFB91C1C);
-        icon = Icons.cancel_rounded;
-        break;
-      case IncidentReportStatus.pendingReview:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        icon = Icons.hourglass_top_rounded;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 4),
-          Text(
-            status.label.toUpperCase(),
-            style: TextStyle(
-              color: fg,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   DateTime? _submittedAt(Map<String, dynamic> report) {
@@ -202,221 +197,142 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(99),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(13),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(icon, color: const Color(0xFF1E3A8A)),
                       ),
-                      child: Icon(icon, color: const Color(0xFF1E3A8A)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              color: Color(0xFF0F172A),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            subtitle,
-                            style: const TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 12,
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                      color: const Color(0xFF64748B),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                ...values.map((value) {
-                  final selected = value == selectedValue;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Material(
-                      color: selected
-                          ? const Color(0xFFEFF6FF)
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(15),
-                      child: InkWell(
+                      IconButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                        color: const Color(0xFF64748B),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  ...values.map((value) {
+                    final selected = value == selectedValue;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: selected
+                            ? const Color(0xFFEFF6FF)
+                            : const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(15),
-                        onTap: () => Navigator.of(sheetContext).pop(value),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(15),
-                            border: Border.all(
-                              color: selected
-                                  ? const Color(0xFF93C5FD)
-                                  : const Color(0xFFE2E8F0),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(15),
+                          onTap: () => Navigator.of(sheetContext).pop(value),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  labelFor(value),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? const Color(0xFF1E3A8A)
-                                        : const Color(0xFF334155),
-                                    fontSize: 14,
-                                    fontWeight: selected
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: selected
+                                    ? const Color(0xFF93C5FD)
+                                    : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    labelFor(value),
+                                    style: TextStyle(
+                                      color: selected
+                                          ? const Color(0xFF1E3A8A)
+                                          : const Color(0xFF334155),
+                                      fontSize: 14,
+                                      fontWeight: selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 160),
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: selected
-                                      ? const Color(0xFF1E3A8A)
-                                      : Colors.white,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 160),
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
                                     color: selected
                                         ? const Color(0xFF1E3A8A)
-                                        : const Color(0xFFCBD5E1),
+                                        : Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: selected
+                                          ? const Color(0xFF1E3A8A)
+                                          : const Color(0xFFCBD5E1),
+                                    ),
                                   ),
+                                  child: selected
+                                      ? const Icon(
+                                          Icons.check_rounded,
+                                          size: 16,
+                                          color: Colors.white,
+                                        )
+                                      : null,
                                 ),
-                                child: selected
-                                    ? const Icon(
-                                        Icons.check_rounded,
-                                        size: 16,
-                                        color: Colors.white,
-                                      )
-                                    : null,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }),
-              ],
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _buildFilterSelector({
-    required String caption,
-    required String value,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: isActive ? const Color(0xFFEFF6FF) : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 62,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isActive
-                  ? const Color(0xFF93C5FD)
-                  : const Color(0xFFE2E8F0),
-              width: isActive ? 1.4 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? const Color(0xFFDBEAFE)
-                      : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, size: 18, color: const Color(0xFF1E3A8A)),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      caption.toUpperCase(),
-                      style: const TextStyle(
-                        color: Color(0xFF94A3B8),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isActive
-                            ? const Color(0xFF1E3A8A)
-                            : const Color(0xFF334155),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.expand_more_rounded,
-                color: Color(0xFF64748B),
-                size: 19,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -448,177 +364,20 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
 
   /// Single Ticket Card UI
   Widget _buildReportCard(Map<String, dynamic> report) {
-    final ticketId = report['ticket_id'] ?? 'N/A';
-    final category = report['category'] ?? 'General Incident';
+    final ticketId = report['ticket_id']?.toString() ?? '';
     final status = IncidentReportStatus.fromRaw(report['status']?.toString());
-    final date = report['created_at'] != null
-        ? DateTime.parse(
-            report['created_at'],
-          ).toLocal().toString().split(' ')[0]
-        : 'Recent';
-    final description = report['description'] ?? '';
-
-    final isEditable = status.canEdit;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.description_outlined,
-                    size: 20,
-                    color: Color(0xFF1E3A8A),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              ticketId,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF1E3A8A),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.copy_outlined,
-                              size: 16,
-                              color: Color(0xFF64748B),
-                            ),
-                            tooltip: 'Copy ticket ID',
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: ticketId));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Ticket ID copied.'),
-                                  duration: Duration(seconds: 1),
-                                ),
-                              );
-                            },
-                            constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.only(left: 6),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        category,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _buildStatusBadge(status),
-              ],
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-            ],
-            const Divider(height: 24, color: Color(0xFFE2E8F0)),
-            Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today_outlined,
-                  size: 14,
-                  color: Color(0xFF94A3B8),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Submitted $date',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-                if (isEditable)
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 7,
-                      ),
-                      minimumSize: const Size(0, 34),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      side: const BorderSide(color: Color(0xFF1E3A8A)),
-                    ),
-                    icon: const Icon(
-                      Icons.edit_note,
-                      size: 18,
-                      color: Color(0xFF1E3A8A),
-                    ),
-                    label: const Text(
-                      'Edit Details',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
-                      ),
-                    ),
-                    onPressed: () async {
-                      final model = IncidentReportModel.fromJson(report);
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => EditReportScreen(
-                            report: model,
-                            service: widget.service,
-                          ),
-                        ),
-                      );
-                      _fetchUserReports();
-                    },
-                  )
-                else
-                  const Text(
-                    'Editing locked',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    final date = _submittedAt(report);
+    return TicketCard(
+      ticketId: ticketId,
+      category: report['category']?.toString() ?? 'Incident',
+      description: report['description']?.toString() ?? '',
+      date: date == null
+          ? 'Date unavailable'
+          : '${date.day}/${date.month}/${date.year}',
+      status: status,
+      onOpen: _openingTicket
+          ? null
+          : () => _openTicket(ticketId, edit: status.canEdit),
     );
   }
 
@@ -673,27 +432,12 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Search Ticket ID',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Type any digits or characters to filter your tickets instantly.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 16),
-
               // Live Search Field
               TextField(
                 controller: _ticketController,
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  hintText: 'Search by Ticket ID (e.g. REP-6710)...',
+                  hintText: 'Search ticket ID',
                   hintStyle: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 14,
@@ -738,70 +482,43 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                 ),
               ),
 
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Filter Tickets',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    TicketFilterChip(
+                      icon: Icons.tune_rounded,
+                      label: _statusFilter.label,
+                      active: _statusFilter != _TicketStatusFilter.all,
+                      onPressed: _selectStatusFilter,
                     ),
-                  ),
-                  if (hasActiveFilters)
-                    OutlinedButton.icon(
-                      onPressed: _clearFilters,
-                      icon: const Icon(Icons.filter_alt_off_rounded, size: 15),
-                      label: const Text('Reset filters'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1E3A8A),
-                        backgroundColor: const Color(0xFFF8FAFC),
-                        side: const BorderSide(color: Color(0xFFBFDBFE)),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 11,
-                          vertical: 8,
-                        ),
-                        visualDensity: VisualDensity.compact,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(99),
+                    const SizedBox(width: 8),
+                    TicketFilterChip(
+                      icon: Icons.date_range_outlined,
+                      label: _timelineFilter.label,
+                      active: _timelineFilter != _TicketTimelineFilter.all,
+                      onPressed: _selectTimelineFilter,
+                    ),
+                    if (hasActiveFilters) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Reset search and filters',
+                        onPressed: _clearFilters,
+                        icon: const Icon(
+                          Icons.filter_alt_off_outlined,
+                          size: 20,
                         ),
                       ),
-                    ),
-                ],
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildFilterSelector(
-                      caption: 'Status',
-                      value: _statusFilter.label,
-                      icon: Icons.tune_rounded,
-                      isActive: _statusFilter != _TicketStatusFilter.all,
-                      onTap: _selectStatusFilter,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildFilterSelector(
-                      caption: 'Timeline',
-                      value: _timelineFilter.label,
-                      icon: Icons.date_range_rounded,
-                      isActive: _timelineFilter != _TicketTimelineFilter.all,
-                      onTap: _selectTimelineFilter,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
+              const SizedBox(height: 14),
               // User Tickets Section Header (Cleaned up, no extra refresh icon)
               Text(
                 !hasActiveFilters
-                    ? 'My Submitted Tickets'
+                    ? 'Submitted tickets (${filteredReports.length})'
                     : 'Filtered Tickets (${filteredReports.length})',
                 style: const TextStyle(
                   fontSize: 16,
@@ -818,6 +535,8 @@ class _TrackStatusScreenState extends State<TrackStatusScreen> {
                     child: CircularProgressIndicator(color: Color(0xFF1E3A8A)),
                   ),
                 )
+              else if (_loadFailed)
+                LoadFailureCard(onRetry: _fetchUserReports)
               else if (filteredReports.isEmpty)
                 Container(
                   width: double.infinity,

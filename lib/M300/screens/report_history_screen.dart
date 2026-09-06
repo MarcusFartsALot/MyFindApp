@@ -1,3 +1,5 @@
+import '../widgets/report_log_card.dart';
+import '../widgets/load_failure_card.dart';
 import 'package:flutter/material.dart';
 
 // Module Imports
@@ -22,6 +24,7 @@ class ReportHistoryScreen extends StatefulWidget {
 
 class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
   bool _isLoading = false;
+  bool _loadFailed = false;
   List<IncidentReportModel> _reports = [];
 
   @override
@@ -32,10 +35,15 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
 
   /// Fetches past reports using getUserReports from CommunityReportService
   Future<void> _fetchReports() async {
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
+    setState(() {
+      _isLoading = true;
+      _loadFailed = false;
+    });
     try {
       final List<Map<String, dynamic>> rawReports = await widget.service
-          .getUserReports(widget.profile.email);
+          .getUserReports(widget.profile.email)
+          .timeout(const Duration(seconds: 15));
 
       final reports = rawReports
           .map((data) => IncidentReportModel.fromJson(data))
@@ -50,89 +58,12 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
     } catch (e) {
       debugPrint("Error fetching reports: $e");
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _loadFailed = true;
+        });
       }
     }
-  }
-
-  Widget _buildStatusBadge(IncidentReportStatus status) {
-    Color bg;
-    Color fg;
-    IconData icon;
-
-    switch (status) {
-      case IncidentReportStatus.validated:
-        bg = const Color(0xFFDCFCE7);
-        fg = const Color(0xFF15803D);
-        icon = Icons.verified_rounded;
-        break;
-      case IncidentReportStatus.rejected:
-        bg = const Color(0xFFFEE2E2);
-        fg = const Color(0xFFB91C1C);
-        icon = Icons.cancel_rounded;
-        break;
-      case IncidentReportStatus.pendingReview:
-        bg = const Color(0xFFFEF3C7);
-        fg = const Color(0xFFB45309);
-        icon = Icons.hourglass_top_rounded;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 4),
-          Text(
-            status.label.toUpperCase(),
-            style: TextStyle(
-              color: fg,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Helper row for non-redundant detailed information
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value.isNotEmpty ? value : 'N/A',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -179,6 +110,11 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
                       ),
                     ),
                   ),
+                )
+              : _loadFailed
+              ? SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: LoadFailureCard(onRetry: _fetchReports),
                 )
               : _reports.isEmpty
               ? SingleChildScrollView(
@@ -243,152 +179,11 @@ class _ReportHistoryScreenState extends State<ReportHistoryScreen> {
     );
   }
 
-  /// Renders expandable list of submitted reports without redundant fields
-  Widget _buildReportList() {
-    return ListView.separated(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      itemCount: _reports.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final report = _reports[index];
-
-        final ticketId = report.ticketId.isNotEmpty ? report.ticketId : 'N/A';
-        final category = report.category.isNotEmpty
-            ? report.category
-            : 'General Incident';
-        final description = report.description.isNotEmpty
-            ? report.description
-            : 'No description provided.';
-        final status = report.statusType;
-
-        final formattedDate = report.createdAt.toLocal().toString().split(
-          '.',
-        )[0];
-
-        final urgency = report.urgencyLevel.trim().isEmpty
-            ? 'Normal'
-            : report.urgencyLevel;
-        final location = report.location.trim().isEmpty
-            ? 'Not specified'
-            : report.location;
-        final evidenceCount = report.mediaPaths.length;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-          ),
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    ticketId,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E3A8A),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    category,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 7.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      description,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Submitted $formattedDate',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF94A3B8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              trailing: _buildStatusBadge(status),
-              children: [
-                const Divider(height: 20, color: Color(0xFFE2E8F0)),
-
-                // Strictly NON-REDUNDANT Details Section
-                _buildDetailRow('Status', status.label),
-                _buildDetailRow('Submitted At', formattedDate),
-                _buildDetailRow('Urgency Level', urgency),
-                _buildDetailRow('Location', location),
-                _buildDetailRow('Evidence Files', '$evidenceCount'),
-
-                const SizedBox(height: 8),
-                const Text(
-                  'Full Description:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF334155),
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget _buildReportList() => ListView.separated(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.all(14),
+    itemCount: _reports.length,
+    separatorBuilder: (_, _) => const SizedBox(height: 12),
+    itemBuilder: (_, index) => ReportLogCard(report: _reports[index]),
+  );
 }
