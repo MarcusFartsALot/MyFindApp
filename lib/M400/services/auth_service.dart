@@ -6,7 +6,10 @@ import '../../core/supabase_client.dart';
 import '../models/profile_model.dart';
 
 class AuthService {
-  final SupabaseClient _client = SupabaseConfig.client;
+  AuthService({SupabaseClient? client})
+    : _client = client ?? SupabaseConfig.client;
+
+  final SupabaseClient _client;
 
   User? get currentUser => _client.auth.currentUser;
   Session? get currentSession => _client.auth.currentSession;
@@ -91,10 +94,49 @@ class AuthService {
 
   Future<void> sendPasswordResetEmail(String email) async {
     try {
+      final normalizedEmail = email.trim().toLowerCase();
+      // Anonymous users receive only an eligibility result, never profile data.
+      // Do not read profiles directly or put a service-role key in the app.
+      final eligibility = await _client.rpc(
+        'module400_password_reset_eligibility',
+        params: {'p_email': normalizedEmail},
+      );
+      switch (eligibility) {
+        case 'eligible':
+          break;
+        case 'not_registered':
+          throw AppException(
+            'Email not registered in system.',
+            code: 'reset_email_not_registered',
+          );
+        case 'admin_portal':
+          throw AppException(
+            'Administrator accounts must reset their password in the Admin Portal.',
+            code: 'reset_admin_portal_required',
+          );
+        case 'not_active':
+          throw AppException(
+            'This email has a registration but no active login account. '
+            'Wait for administrator approval or contact support.',
+            code: 'reset_account_not_active',
+          );
+        default:
+          throw AppException('Could not verify this email. Please try again.');
+      }
       await _client.auth.resetPasswordForEmail(
-        email.trim().toLowerCase(),
+        normalizedEmail,
         redirectTo: AppConfig.passwordResetRedirectUrl,
       );
+    } on AppException {
+      rethrow;
+    } on PostgrestException catch (error) {
+      if (error.code == 'PGRST202') {
+        throw AppException(
+          'Password reset email checking is not configured yet. Please contact support.',
+          code: 'reset_email_check_not_configured',
+        );
+      }
+      throw AppException('Could not verify this email. Please try again.');
     } on AuthException catch (error) {
       final isEmailLimit =
           error.statusCode?.toString() == '429' ||

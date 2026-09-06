@@ -147,7 +147,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return M400AuthPage(
       title: _sent ? 'Check your email' : 'Forgot password?',
       subtitle: _sent
-          ? 'We sent password recovery instructions to your inbox.'
+          ? 'Your password-reset request was accepted.'
           : 'Enter your account email and we will send you a secure reset link.',
       icon: _sent ? Icons.mark_email_read_outlined : Icons.lock_reset_rounded,
       showBackButton: true,
@@ -194,7 +194,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           const SizedBox(height: 14),
           const Text(
-            'For privacy, the confirmation looks the same whether or not the email is registered. Maximum 3 requests per email in a rolling 24-hour period.',
+            'Only registered, active accounts can request a reset link. Maximum 3 requests per email in a rolling 24-hour period.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: M400AuthColors.muted,
@@ -234,7 +234,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 8),
         const Text(
-          'If an account exists for this address, the email contains a link that returns to the MyFind app.',
+          'Your reset request was accepted. Check your inbox and spam folder for a link that returns to the MyFind app.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: M400AuthColors.body,

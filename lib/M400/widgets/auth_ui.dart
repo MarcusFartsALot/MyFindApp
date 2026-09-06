@@ -26,6 +26,7 @@ class M400AuthPage extends StatelessWidget {
     required this.icon,
     required this.child,
     this.showBackButton = false,
+    this.onBack,
     this.maxWidth = 520,
   });
 
@@ -34,6 +35,7 @@ class M400AuthPage extends StatelessWidget {
   final IconData icon;
   final Widget child;
   final bool showBackButton;
+  final VoidCallback? onBack;
   final double maxWidth;
 
   @override
@@ -42,6 +44,13 @@ class M400AuthPage extends StatelessWidget {
       backgroundColor: M400AuthColors.background,
       appBar: showBackButton
           ? AppBar(
+              leading: onBack == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Back to home',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: onBack,
+                    ),
               backgroundColor: M400AuthColors.surface,
               elevation: 1,
               scrolledUnderElevation: 1,
@@ -248,10 +257,7 @@ InputDecoration m400InputDecoration({
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
-      borderSide: const BorderSide(
-        color: M400AuthColors.primary,
-        width: 1.5,
-      ),
+      borderSide: const BorderSide(color: M400AuthColors.primary, width: 1.5),
     ),
     errorBorder: border.copyWith(
       borderSide: const BorderSide(color: M400AuthColors.error),
@@ -291,10 +297,7 @@ class M400PrimaryButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
         onPressed: isLoading ? null : onPressed,
         child: isLoading

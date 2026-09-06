@@ -76,4 +76,17 @@ class Validators {
   }
 
   static int _currentTwoDigitYear() => DateTime.now().year % 100;
+
+  static String? myKadGender(String? identityNumber, String? gender) {
+    final error = malaysianIC(identityNumber);
+    if (error != null) return error;
+    if (gender != 'male' && gender != 'female') {
+      return 'Select the gender shown on your MyKad';
+    }
+    final digits = identityNumber!.replaceAll('-', '').trim();
+    final expected = int.parse(digits[11]).isOdd ? 'male' : 'female';
+    return gender == expected
+        ? null
+        : 'Gender does not match the MyKad number. Check the number and document gender.';
+  }
 }

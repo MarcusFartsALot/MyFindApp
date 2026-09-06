@@ -5,9 +5,12 @@ import 'package:my_find/M400/widgets/auth_ui.dart';
 import '../router/role_router.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
+import 'package:my_find/M400/screens/auth/about_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.authService});
+
+  final AuthService? authService;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -15,7 +18,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _authService = AuthService();
+  late final _authService = widget.authService ?? AuthService();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _isSubmitting = false;
@@ -79,6 +82,14 @@ class _LoginScreenState extends State<LoginScreen> {
       title: 'Welcome back',
       subtitle: 'Sign in to continue to your MyFind account.',
       icon: Icons.travel_explore_rounded,
+      showBackButton: true,
+      onBack: () {
+        if (_isSubmitting) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+          (route) => false,
+        );
+      },
       child: M400AuthCard(
         child: Form(
           key: _formKey,
@@ -118,8 +129,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           setState(() => _obscurePassword = !_obscurePassword),
                       icon: Icon(
                         _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                         color: M400AuthColors.muted,
                       ),
                     ),

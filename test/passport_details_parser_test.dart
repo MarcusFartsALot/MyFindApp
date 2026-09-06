@@ -5,18 +5,19 @@ import 'package:my_find/core/validators/validators.dart';
 void main() {
   test('reads standard TD3 MRZ with checked number and expiry', () {
     final result = PassportDetailsParser.parse(
-      'P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n'
+      '${'P<UTOERIKSSON<<ANNA<MARIA'.padRight(44, '<')}\n'
       'L898902C36UTO7408122F1204159ZE184226B<<<<<10',
     );
     expect(result.number, 'L898902C3');
     expect(result.name, 'ERIKSSON ANNA MARIA');
     expect(result.nationality, 'UTO');
+    expect(result.issuingCountry, 'UTO');
     expect(result.expiryDate, DateTime(2012, 4, 15));
     expect(result.issueDate, isNull);
   });
   test('rejects corrupted MRZ number and leaves missing fields empty', () {
     final result = PassportDetailsParser.parse(
-      'P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n'
+      '${'P<UTOERIKSSON<<ANNA<MARIA'.padRight(44, '<')}\n'
       'L898902C37UTO7408122F1204159ZE184226B<<<<<10',
     );
     expect(result.number, isNull);

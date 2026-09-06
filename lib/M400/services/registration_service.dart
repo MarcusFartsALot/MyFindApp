@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/exceptions/app_exceptions.dart';
 import '../../core/supabase_client.dart';
 import 'document_ocr_service.dart';
+import 'identity_number_service.dart';
 import 'storage_service.dart';
 
 class RegistrationService {
@@ -21,6 +22,7 @@ class RegistrationService {
     required File documentImage,
     required String extractedText,
     File? documentBackImage,
+    String? documentBackExtractedText,
     DateTime? passportIssueDate,
     DateTime? passportExpiryDate,
     String? passportIssuingCountry,
@@ -37,13 +39,28 @@ class RegistrationService {
     if (nationality?.trim().isEmpty ?? true) {
       throw AppException('Nationality is required.');
     }
-    if (extractedText.replaceAll(RegExp(r'\s'), '').length < 20) {
-      throw AppException(
-        'The picture is not clear enough. Please take a photo again.',
-      );
-    }
+    DocumentOcrService.validateDocumentText(
+      text: extractedText,
+      requestedRole: requestedRole,
+    );
     if (requestedRole == 'citizen' && documentBackImage == null) {
       throw AppException('Please add a photo of the back of your MyKad.');
+    }
+    if (requestedRole == 'citizen') {
+      final backText = documentBackExtractedText ?? '';
+      DocumentOcrService.validateDocumentText(
+        text: backText,
+        requestedRole: requestedRole,
+        side: IdentityDocumentSide.back,
+      );
+      if (!DocumentOcrService.backIdentityNumberMatches(
+        extractedText: backText,
+        identityNumber: identityNumber,
+      )) {
+        throw AppException(
+          DocumentOcrService.identityMismatchMessage('citizen'),
+        );
+      }
     }
     if (!DocumentOcrService.identityNumberMatches(
       extractedText: extractedText,
@@ -55,6 +72,11 @@ class RegistrationService {
       );
     }
     if (requestedRole == 'tourist') {
+      final now = DateTime.now();
+      if (passportIssueDate != null &&
+          passportIssueDate.isAfter(DateTime(now.year, now.month, now.day))) {
+        throw AppException('Passport issue date cannot be in the future.');
+      }
       if (passportExpiryDate == null ||
           !passportExpiryDate.isAfter(DateTime.now())) {
         throw AppException('Enter a valid future passport expiry date.');
@@ -69,6 +91,12 @@ class RegistrationService {
         throw AppException('Enter the passport issuing country.');
       }
     }
+
+    // Recheck immediately before uploads. The normalized database indexes
+    // remain the final guard if two registrations race after this lookup.
+    await IdentityNumberService(
+      client: _client,
+    ).ensureAvailable(role: requestedRole, number: identityNumber);
 
     final profileId = _uuid.v4();
     final frontObjectName = requestedRole == 'citizen'
@@ -104,7 +132,10 @@ class RegistrationService {
           'p_phone_number': phoneNumber!.trim(),
           'p_nationality': nationality!.trim(),
           'p_role': requestedRole,
-          'p_identity_number': identityNumber.trim().toUpperCase(),
+          'p_identity_number': DocumentOcrService.normalizeIdentityNumber(
+            identityNumber,
+            requestedRole: requestedRole,
+          ),
           'p_front_path': documentPath,
           'p_back_path': documentBackPath,
           'p_passport_issue_date': passportIssueDate == null

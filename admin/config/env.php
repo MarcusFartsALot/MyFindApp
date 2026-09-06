@@ -15,10 +15,13 @@ final class Env
 
         self::$loaded = true;
         $configuredPath = getenv('ADMIN_ENV_FILE');
-        
+        // Use the documented project-root file. Keep admin/.env as a legacy
+        // fallback, but never mix credentials from two different projects.
+        $projectEnvPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '.admin.env';
+        $legacyEnvPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env';
         $path = is_string($configuredPath) && $configuredPath !== ''
             ? $configuredPath
-            : dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env';
+            : (is_file($projectEnvPath) ? $projectEnvPath : $legacyEnvPath);
 
         if (is_file($path)) {
             $parsed = parse_ini_file($path, false, INI_SCANNER_RAW);

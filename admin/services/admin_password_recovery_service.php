@@ -13,6 +13,29 @@ const ADMIN_RECOVERY_IP_WINDOW = 3600;
 const ADMIN_RECOVERY_REQUEST_COOLDOWN = 60;
 const ADMIN_RECOVERY_MINIMUM_RESPONSE_MS = 800;
 
+// Only these deliberately user-facing errors may be displayed by the form.
+final class AdminRecoveryRequestError extends RuntimeException {}
+
+/** @param array<string, mixed>|null $profile */
+function admin_recovery_registered_auth_id(?array $profile): string
+{
+    if ($profile === null) {
+        throw new AdminRecoveryRequestError('Email not registered in system.');
+    }
+    if (($profile['role'] ?? null) !== 'admin') {
+        throw new AdminRecoveryRequestError(
+            'This email is not an Administrator account. Use Forgot password in the MyFind app.'
+        );
+    }
+    $authId = $profile['auth_id'] ?? null;
+    if (!is_string($authId) || !valid_uuid($authId)) {
+        throw new AdminRecoveryRequestError(
+            'This registration is not linked to an active login account. Please contact support.'
+        );
+    }
+    return $authId;
+}
+
 function admin_recovery_base64url(string $value): string
 {
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
@@ -62,25 +85,24 @@ function request_admin_password_reset(string $email): void
     if (strlen($normalizedEmail) > 254
         || filter_var($normalizedEmail, FILTER_VALIDATE_EMAIL) === false
     ) {
-        throw new RuntimeException('Enter a valid email address.');
+        throw new AdminRecoveryRequestError('Enter a valid email address.');
     }
 
-    // Apply the same limit before looking up the profile so both existing and
-    // unknown email addresses follow the same public behavior. Keys are HMACs;
-    // the local rate-limit store never contains an email address or IP in text.
+    // Keep abuse limits on both registered and unknown email lookups. Keys are
+    // HMACs; the rate-limit store never contains emails or IPs in plain text.
     if (!admin_recovery_request_allowed($normalizedEmail)) {
-        return;
+        throw new AdminRecoveryRequestError(
+            'Reset request limit reached. Wait at least 60 seconds between requests. '
+            . 'A maximum of 3 requests per email is allowed in 24 hours.'
+        );
     }
 
     $client = new SupabaseClient();
     $profile = admin_recovery_profile_by_email($client, $normalizedEmail);
 
-    // Use the same outward response for every valid email. This prevents the
-    // form from revealing whether an Administrator account exists.
-    $authId = is_array($profile) ? ($profile['auth_id'] ?? null) : null;
-    if (!is_string($authId) || !valid_uuid($authId)) {
-        return;
-    }
+    // Explicit account feedback is intentional. Never send for a missing,
+    // non-Administrator or unlinked profile.
+    $authId = admin_recovery_registered_auth_id($profile);
 
     try {
         $authUser = $client->asService(
@@ -96,7 +118,9 @@ function request_admin_password_reset(string $email): void
     }
     $authEmail = strtolower(trim((string) ($authUser['email'] ?? '')));
     if ($authEmail === '' || !hash_equals($normalizedEmail, $authEmail)) {
-        return;
+        throw new AdminRecoveryRequestError(
+            'The registered email does not match its login account. Please contact support.'
+        );
     }
 
     $redirectUrl = admin_password_reset_redirect_url();
@@ -117,10 +141,10 @@ function request_admin_password_reset(string $email): void
     } catch (SupabaseApiException $error) {
         $message = strtolower($error->getMessage() . ' ' . $error->responseBody);
         if ($error->statusCode === 429) {
-            // Keep the public response generic. Supabase enforces the actual
-            // project email limit and the rejected request is logged server-side.
             error_log('Admin password recovery was rate limited by Supabase.');
-            return;
+            throw new AdminRecoveryRequestError(
+                'The email service is temporarily rate limited. No new reset link was sent. Please try again later.'
+            );
         }
         if ($error->statusCode === 400 && str_contains($message, 'redirect')) {
             throw new RuntimeException(

@@ -55,6 +55,9 @@ class ExceptionMapper {
 
   static String _mapPostgrestMessage(PostgrestException e) {
     const safeDatabaseMessages = [
+      'This identity document image is already used by another registration.',
+      'Document uniqueness could not be verified. Please contact support.',
+      'Front and back must be different document images.',
       'Email is already registered.',
       'IC number is already registered.',
       'Passport number is already registered.',

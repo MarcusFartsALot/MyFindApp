@@ -34,15 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             request_admin_password_reset($emailValue);
+            $requestAccepted = true;
+        } catch (AdminRecoveryRequestError $error) {
+            $errorMessage = $error->getMessage();
         } catch (Throwable $error) {
-            // Do not let account-specific database, Auth, redirect, or email
-            // failures turn the public response into an enumeration signal.
+            // Do not expose raw database/provider errors or claim success.
             $status = $error instanceof SupabaseApiException
                 ? ' HTTP ' . $error->statusCode
                 : '';
             error_log('Admin password reset request failed.' . $status);
+            $errorMessage = 'Password recovery is temporarily unavailable. Please try again later.';
         }
-        $requestAccepted = true;
     } catch (Throwable $error) {
         $errorMessage = $error->getMessage();
     } finally {
@@ -81,8 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="admin-security-note">
             <i class='bx bx-shield-quarter' aria-hidden="true"></i>
             <div>
-                <strong>Privacy protected</strong>
-                <span>Account existence is never disclosed</span>
+                <strong>Verified account recovery</strong>
+                <span>Only registered administrators can request a link</span>
             </div>
         </div>
     </section>
@@ -93,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h1 id="recovery-title"><?= $requestAccepted ? 'Request Received' : 'Forgot Password?' ?></h1>
             <p>
                 <?php if ($requestAccepted): ?>
-                    If an eligible Administrator account matches and email delivery is available, Supabase will send a reset link.
+                    Your Administrator account was verified and the email service accepted your reset request.
                 <?php else: ?>
                     Enter your Administrator email and we will send instructions to reset your password.
                 <?php endif; ?>
@@ -108,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php elseif ($requestAccepted): ?>
             <div class="alert alert-success login-alert" role="status">
                 <i class='bx bx-mail-send' aria-hidden="true"></i>
-                <span>Check your inbox and spam folder. Delivery may be delayed or skipped when the project's Supabase email quota has been reached.</span>
+                <span>Check your inbox and spam folder for your reset link. Email delivery can take a few minutes.</span>
             </div>
         <?php endif; ?>
 
@@ -150,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <p class="admin-login-help">
             <i class='bx bx-info-circle' aria-hidden="true"></i>
-            For security, the page shows the same confirmation whether or not the email belongs to an Administrator. Wait before trying again, and use only the newest successfully sent link.
+            Maximum 3 requests per email in 24 hours, at least 60 seconds apart. Use only the newest successfully sent link.
         </p>
     </section>
 </main>

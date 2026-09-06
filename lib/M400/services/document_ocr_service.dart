@@ -4,9 +4,74 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 
 import '../../core/exceptions/app_exceptions.dart';
 
+enum IdentityDocumentSide { front, back }
+
 class DocumentOcrService {
   static const unclearImageMessage =
       'The picture is not clear enough. Please take a photo again.';
+  static const notMyKadMessage =
+      'The image does not appear to be a MyKad. Please take a clear MyKad photo.';
+
+  /// Text-level checks shared by capture and submission. OCR is a screening
+  /// aid, not proof that an identity document is genuine.
+  static void validateDocumentText({
+    required String text,
+    required String requestedRole,
+    IdentityDocumentSide side = IdentityDocumentSide.front,
+  }) {
+    final compact = text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final words = text.split(RegExp(r'\s+')).where((word) => word.length >= 2);
+    if (compact.length < 20 || words.length < 3) {
+      throw AppException(unclearImageMessage);
+    }
+    final looksLikePassport = RegExp(
+      r'\b(PASSPORT|PASPORT)\b|P\s*<',
+      caseSensitive: false,
+    ).hasMatch(text);
+    final myKadHeading =
+        compact.contains('MYKAD') ||
+        compact.contains('KADPENGENALAN') ||
+        (compact.contains('MALAYSIA') && compact.contains('IDENTITYCARD'));
+    final reverseHeading =
+        compact.contains('PENDAFTARANNEGARA') &&
+        (compact.contains('KETUAPENGARAH') || compact.contains('JABATAN'));
+    if (requestedRole == 'citizen' &&
+        (looksLikePassport ||
+            !(myKadHeading ||
+                (side == IdentityDocumentSide.back && reverseHeading)))) {
+      throw AppException(notMyKadMessage);
+    }
+    if (requestedRole == 'tourist' && !looksLikePassport) {
+      throw AppException(
+        'The image does not appear to be a passport. Please take a clear passport photo.',
+      );
+    }
+  }
+
+  /// The front is the required number-match source. If the reverse OCR also
+  /// contains a complete MyKad number, it must agree with the typed number.
+  static bool backIdentityNumberMatches({
+    required String extractedText,
+    required String identityNumber,
+  }) {
+    if (normalizeIdentityNumber(
+          identityNumber,
+          requestedRole: 'citizen',
+        ).length !=
+        12) {
+      return false;
+    }
+    final numbers = RegExp(
+      r'(?<!\d)\d{6}[\s-]?\d{2}[\s-]?\d{4}(?!\d)',
+    ).allMatches(extractedText);
+    return numbers.every(
+      (match) => identityNumberMatches(
+        extractedText: match[0]!,
+        identityNumber: identityNumber,
+        requestedRole: 'citizen',
+      ),
+    );
+  }
 
   /// OCR text stays inside the application and is never presented to the
   /// citizen or tourist. Only this boolean verification result reaches the UI.
@@ -48,6 +113,7 @@ class DocumentOcrService {
   Future<String> extractAndValidate({
     required File image,
     required String requestedRole,
+    IdentityDocumentSide side = IdentityDocumentSide.front,
   }) async {
     final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
     try {
@@ -55,36 +121,11 @@ class DocumentOcrService {
       final result = await recognizer.processImage(inputImage);
       final text = result.text.trim();
 
-      final compactText = text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-      final wordCount = text
-          .split(RegExp(r'\s+'))
-          .where((word) => word.length >= 2)
-          .length;
-      if (compactText.length < 20 || wordCount < 3) {
-        throw AppException(unclearImageMessage);
-      }
-
-      final normalized = text.toLowerCase();
-      final looksLikeMyKad =
-          normalized.contains('malaysia') ||
-          normalized.contains('kad pengenalan') ||
-          normalized.contains('identity card') ||
-          normalized.contains('mykad');
-      final looksLikePassport =
-          normalized.contains('passport') ||
-          normalized.contains('pasport') ||
-          normalized.contains('p<');
-
-      if (requestedRole == 'citizen' && !looksLikeMyKad) {
-        throw AppException(
-          'The image does not appear to be a MyKad. Please take a clear MyKad photo.',
-        );
-      }
-      if (requestedRole == 'tourist' && !looksLikePassport) {
-        throw AppException(
-          'The image does not appear to be a passport. Please take a clear passport photo.',
-        );
-      }
+      validateDocumentText(
+        text: text,
+        requestedRole: requestedRole,
+        side: side,
+      );
 
       return text;
     } on AppException {

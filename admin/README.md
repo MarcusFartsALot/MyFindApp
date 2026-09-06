@@ -50,8 +50,10 @@ local server using the command above.
 
 The Login page links to `admin_forgot_password.php`. The portal sends a
 Supabase recovery email only when the submitted address belongs to a linked
-`profiles.role = admin` account, while always showing the same public response
-to prevent account enumeration.
+`profiles.role = admin` account. Unknown addresses now display "Email not
+registered in system." Non-admin and unlinked profiles are rejected before
+sending. This requested feedback deliberately reveals registration status;
+request limits and normal administrator authorization remain enforced.
 
 Recovery uses a PKCE authorization code. The email link must normally be opened
 in the same browser that requested it because the verifier remains in the
@@ -77,9 +79,10 @@ Supabase's built-in SMTP service is best-effort and currently permits only a
 small project-wide number of Auth emails. Registration, confirmation, OTP, and
 password-recovery messages share that quota. Configure custom SMTP under
 **Authentication > Emails > SMTP Settings** when repeated or reliable delivery
-is required. The public form intentionally cannot confirm whether a particular
-email was sent because that would reveal which addresses are Administrator
-accounts; use Supabase Auth logs to distinguish `mail.send` from HTTP 429.
+is required. The form reports provider acceptance only after the registered
+account check succeeds. Local limits, HTTP 429 and provider errors are shown as
+failures, never as accepted requests. Acceptance does not guarantee inbox
+delivery; use Supabase Auth logs to investigate delivery problems.
 
 ## First administrator
 

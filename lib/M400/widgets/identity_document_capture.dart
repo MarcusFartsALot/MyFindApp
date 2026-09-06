@@ -18,8 +18,14 @@ class IdentityDocumentCapture extends StatefulWidget {
   final String requestedRole;
   final String expectedIdentityNumber;
   final String? labelOverride;
-  final bool requiresOcr;
+  final IdentityDocumentSide side;
   final ValueChanged<RecognizedDocument?> onDocumentChanged;
+
+  /// Passport autofill is independent of identity-number verification.
+  /// Only onDocumentChanged may supply a document accepted for submission.
+  final ValueChanged<String?>? onTextExtracted;
+  final ImagePicker? imagePicker;
+  final DocumentOcrService? ocrService;
 
   const IdentityDocumentCapture({
     super.key,
@@ -27,7 +33,10 @@ class IdentityDocumentCapture extends StatefulWidget {
     this.expectedIdentityNumber = '',
     required this.onDocumentChanged,
     this.labelOverride,
-    this.requiresOcr = true,
+    this.side = IdentityDocumentSide.front,
+    this.onTextExtracted,
+    this.imagePicker,
+    this.ocrService,
   });
 
   @override
@@ -36,8 +45,9 @@ class IdentityDocumentCapture extends StatefulWidget {
 }
 
 class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
-  final ImagePicker _picker = ImagePicker();
-  final DocumentOcrService _ocrService = DocumentOcrService();
+  late final ImagePicker _picker = widget.imagePicker ?? ImagePicker();
+  late final DocumentOcrService _ocrService =
+      widget.ocrService ?? DocumentOcrService();
 
   File? _image;
   String? _extractedText;
@@ -52,8 +62,7 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
   @override
   void didUpdateWidget(covariant IdentityDocumentCapture oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.requiresOcr ||
-        _extractedText == null ||
+    if (_extractedText == null ||
         oldWidget.expectedIdentityNumber == widget.expectedIdentityNumber) {
       return;
     }
@@ -63,26 +72,43 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
     _error = matches
         ? null
         : DocumentOcrService.identityMismatchMessage(widget.requestedRole);
-    widget.onDocumentChanged(
-      matches
-          ? RecognizedDocument(image: _image!, extractedText: _extractedText!)
-          : null,
-    );
+    final expected = widget.expectedIdentityNumber;
+    final text = _extractedText!;
+    // Parent fields may be rebuilding now. Notify after this frame, and ignore
+    // a stale recheck if the image/number changes again before delivery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _extractedText != text ||
+          widget.expectedIdentityNumber != expected) {
+        return;
+      }
+      widget.onDocumentChanged(
+        matches
+            ? RecognizedDocument(image: _image!, extractedText: text)
+            : null,
+      );
+    });
   }
 
   bool _matchesExpectedNumber(String extractedText) =>
-      DocumentOcrService.identityNumberMatches(
-        extractedText: extractedText,
-        identityNumber: widget.expectedIdentityNumber,
-        requestedRole: widget.requestedRole,
-      );
+      widget.side == IdentityDocumentSide.back &&
+          widget.requestedRole == 'citizen'
+      ? DocumentOcrService.backIdentityNumberMatches(
+          extractedText: extractedText,
+          identityNumber: widget.expectedIdentityNumber,
+        )
+      : DocumentOcrService.identityNumberMatches(
+          extractedText: extractedText,
+          identityNumber: widget.expectedIdentityNumber,
+          requestedRole: widget.requestedRole,
+        );
 
   Future<void> _pick(ImageSource source) async {
-    if (widget.requiresOcr && widget.expectedIdentityNumber.trim().isEmpty) {
+    if (widget.requestedRole == 'citizen' &&
+        widget.expectedIdentityNumber.trim().isEmpty) {
       setState(() {
-        _error = widget.requestedRole == 'citizen'
-            ? 'Enter your MyKad number before adding the photo.'
-            : 'Enter your passport number before adding the photo.';
+        _isVerified = false;
+        _error = 'Enter your MyKad number before adding the photo.';
       });
       widget.onDocumentChanged(null);
       return;
@@ -99,6 +125,7 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
       if (!mounted) return;
       setState(() {
         _error = 'The camera or photo library could not be opened.';
+        _isVerified = false;
         _isProcessing = false;
       });
       widget.onDocumentChanged(null);
@@ -115,30 +142,28 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
       _isProcessing = true;
     });
     widget.onDocumentChanged(null);
-
-    if (!widget.requiresOcr) {
-      setState(() {
-        _isProcessing = false;
-        _isVerified = true;
-      });
-      widget.onDocumentChanged(
-        RecognizedDocument(image: image, extractedText: ''),
-      );
-      return;
-    }
+    widget.onTextExtracted?.call(null);
 
     try {
       final text = await _ocrService.extractAndValidate(
         image: image,
         requestedRole: widget.requestedRole,
+        side: widget.side,
       );
       if (!mounted) return;
       // Retain OCR text only in memory so a corrected typed number can be
       // checked again without exposing the extracted document contents.
       _extractedText = text;
+      // A readable passport can help fill the form even before its number is
+      // typed. A mismatch still leaves the submission document unset.
+      widget.onTextExtracted?.call(text);
       if (!_matchesExpectedNumber(text)) {
         throw AppException(
-          DocumentOcrService.identityMismatchMessage(widget.requestedRole),
+          widget.expectedIdentityNumber.trim().isEmpty
+              ? 'Passport scanned. Enter the passport number to verify it before registering.'
+              : DocumentOcrService.identityMismatchMessage(
+                  widget.requestedRole,
+                ),
         );
       }
       setState(() {
@@ -276,16 +301,18 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
             style: const TextStyle(color: M400AuthColors.error, fontSize: 12),
           ),
         ],
-        if (widget.requiresOcr && _isVerified) ...[
+        if (_isVerified) ...[
           const SizedBox(height: 12),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.check_circle, color: M400AuthColors.success),
-              SizedBox(width: 8),
+              const Icon(Icons.check_circle, color: M400AuthColors.success),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Document number verified successfully.',
-                  style: TextStyle(
+                  widget.side == IdentityDocumentSide.back
+                      ? 'MyKad back photo checked successfully.'
+                      : 'Document number verified successfully.',
+                  style: const TextStyle(
                     color: M400AuthColors.success,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -296,7 +323,7 @@ class _IdentityDocumentCaptureState extends State<IdentityDocumentCapture> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'OCR runs privately and only checks whether the entered number appears on the document. An administrator will still verify it.',
+            'OCR runs privately to check the document. Review any autofilled details. An administrator will still verify your documents.',
             style: TextStyle(
               color: M400AuthColors.muted,
               fontSize: 11,

@@ -106,8 +106,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         setState(() => _obscurePassword = !_obscurePassword),
                     icon: Icon(
                       _obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
                       color: M400AuthColors.muted,
                     ),
                   ),
@@ -132,8 +132,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     ),
                     icon: Icon(
                       _obscureConfirmation
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
                       color: M400AuthColors.muted,
                     ),
                   ),

@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:my_find/core/validators/validators.dart';
+import 'package:my_find/M400/services/document_ocr_service.dart';
+import 'package:my_find/M400/services/passport_details_parser.dart';
+import 'package:my_find/M400/services/identity_number_service.dart';
 import 'package:my_find/M400/services/registration_service.dart';
 import 'package:my_find/M400/widgets/auth_ui.dart';
 import 'package:my_find/M400/widgets/identity_document_capture.dart';
@@ -15,6 +20,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _registrationService = RegistrationService();
+  final _identityService = IdentityNumberService();
   final _fullNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -30,10 +36,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   RecognizedDocument? _backDocument;
   DateTime? _passportIssueDate;
   DateTime? _passportExpiryDate;
+  PassportDetails _lastPassportScan = const PassportDetails();
+  String? _passportScanFeedback;
+  Timer? _identityCheckTimer;
+  int _identityCheckVersion = 0;
+  bool _checkingIdentity = false;
+  String? _identityCheckMessage;
+  bool _identityCheckFailed = false;
   bool _isSubmitting = false;
 
   @override
   void dispose() {
+    _identityCheckTimer?.cancel();
     _fullNameCtrl.dispose();
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
@@ -48,17 +62,95 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _changeRole(String role) {
     if (_requestedRole == role) return;
+    _identityCheckTimer?.cancel();
+    _identityCheckVersion++;
     setState(() {
       _requestedRole = role;
       _document = null;
       _backDocument = null;
       _passportIssueDate = null;
       _passportExpiryDate = null;
+      _lastPassportScan = const PassportDetails();
+      _passportScanFeedback = null;
+      _checkingIdentity = false;
+      _identityCheckMessage = null;
+      _identityCheckFailed = false;
       _passportIssueCtrl.clear();
       _passportExpiryCtrl.clear();
       _passportIssuingCountryCtrl.clear();
       _countryOfResidenceCtrl.clear();
       _identityNumberCtrl.clear();
+    });
+  }
+
+  void _onIdentityNumberChanged(String value) {
+    _identityCheckTimer?.cancel();
+    final version = ++_identityCheckVersion;
+    final role = _requestedRole;
+    final validation = role == 'citizen'
+        ? Validators.malaysianIC(value)
+        : Validators.passportNumber(value);
+    setState(() {
+      _checkingIdentity = validation == null;
+      _identityCheckMessage = null;
+      _identityCheckFailed = false;
+    });
+    if (validation != null) return;
+    _identityCheckTimer = Timer(const Duration(milliseconds: 650), () async {
+      String message = 'This number is available for registration.';
+      var failed = false;
+      try {
+        await _identityService.ensureAvailable(role: role, number: value);
+      } catch (error) {
+        message = error.toString();
+        failed = true;
+      }
+      if (!mounted || version != _identityCheckVersion) return;
+      setState(() {
+        _checkingIdentity = false;
+        _identityCheckMessage = message;
+        _identityCheckFailed = failed;
+      });
+    });
+  }
+
+  void _onPassportTextExtracted(String? text) {
+    if (_requestedRole != 'tourist') return;
+
+    final scanned = text == null
+        ? const PassportDetails()
+        : PassportDetailsParser.parse(text);
+    final country = _passportIssuingCountryCtrl.text.trim();
+    final details = PassportDetailsParser.mergeAutofill(
+      current: PassportDetails(
+        issueDate: _passportIssueDate,
+        expiryDate: _passportExpiryDate,
+        issuingCountry: country.isEmpty ? null : country,
+      ),
+      scanned: scanned,
+      previous: _lastPassportScan,
+    );
+    setState(() {
+      _lastPassportScan = scanned;
+      final readCount = [
+        scanned.issueDate,
+        scanned.expiryDate,
+        scanned.issuingCountry,
+      ].where((value) => value != null).length;
+      _passportScanFeedback = text == null
+          ? null
+          : readCount == 0
+          ? 'No passport dates or issuing country could be read. Retake the full details page in good light, or enter the details below.'
+          : 'Read $readCount of 3 passport details. Review the fields below and enter anything missing. Your manual corrections are kept.';
+      _passportIssueDate = details.issueDate;
+      _passportExpiryDate = details.expiryDate;
+      _passportIssueCtrl.text = details.issueDate == null
+          ? ''
+          : _formatDate(details.issueDate!);
+      _passportExpiryCtrl.text = details.expiryDate == null
+          ? ''
+          : _formatDate(details.expiryDate!);
+      _passportIssuingCountryCtrl.text = details.issuingCountry ?? '';
     });
   }
 
@@ -88,6 +180,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         nationality: _nationalityCtrl.text,
         documentImage: _document!.image,
         documentBackImage: _backDocument?.image,
+        documentBackExtractedText: _backDocument?.extractedText,
         extractedText: _document!.extractedText,
         passportIssueDate: _passportIssueDate,
         passportExpiryDate: _passportExpiryDate,
@@ -104,7 +197,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             'Your registration was submitted successfully.\n\n'
             'Please wait for administrator approval. If approved, sign in '
             'with your email and IC or passport number as the temporary '
-            'password. You will then create a new password.',
+            'password. You can change it later in Settings.',
           ),
           actions: [
             FilledButton(
@@ -130,13 +223,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _choosePassportExpiryDate() async {
     final now = DateTime.now();
+    final first = DateTime(now.year, now.month, now.day + 1);
+    final last = DateTime(now.year + 20, 12, 31);
     final chosen = await showDatePicker(
       context: context,
-      initialDate: _passportExpiryDate ?? DateTime(now.year + 1),
-      firstDate: DateTime(now.year, now.month, now.day + 1),
-      lastDate: DateTime(now.year + 20, 12, 31),
+      initialDate: _clampDate(
+        _passportExpiryDate ?? DateTime(now.year + 1),
+        first,
+        last,
+      ),
+      firstDate: first,
+      lastDate: last,
     );
-    if (chosen == null) return;
+    if (chosen == null || !mounted) return;
     setState(() {
       _passportExpiryDate = chosen;
       _passportExpiryCtrl.text =
@@ -148,17 +247,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _choosePassportIssueDate() async {
     final now = DateTime.now();
+    final first = DateTime(now.year - 20);
+    final last = DateTime(now.year, now.month, now.day);
     final chosen = await showDatePicker(
       context: context,
-      initialDate: _passportIssueDate ?? DateTime(now.year - 1),
-      firstDate: DateTime(now.year - 20),
-      lastDate: DateTime(now.year, now.month, now.day),
+      initialDate: _clampDate(
+        _passportIssueDate ?? DateTime(now.year - 1),
+        first,
+        last,
+      ),
+      firstDate: first,
+      lastDate: last,
     );
-    if (chosen == null) return;
+    if (chosen == null || !mounted) return;
     setState(() {
       _passportIssueDate = chosen;
       _passportIssueCtrl.text = _formatDate(chosen);
     });
+  }
+
+  DateTime _clampDate(DateTime date, DateTime first, DateTime last) =>
+      date.isBefore(first)
+      ? first
+      : date.isAfter(last)
+      ? last
+      : date;
+
+  String? _validateIssueDate(String? _) {
+    final issue = _passportIssueDate;
+    if (issue == null) return null;
+    final now = DateTime.now();
+    if (issue.isAfter(DateTime(now.year, now.month, now.day))) {
+      return 'Passport issue date cannot be in the future';
+    }
+    if (_passportExpiryDate != null && issue.isAfter(_passportExpiryDate!)) {
+      return 'Issue date must be before expiry date';
+    }
+    return null;
+  }
+
+  String? _validateExpiryDate(String? _) {
+    if (_passportExpiryDate == null) return 'Passport expiry date is required';
+    if (!_passportExpiryDate!.isAfter(DateTime.now())) {
+      return 'Enter a valid future passport expiry date';
+    }
+    return null;
   }
 
   String _formatDate(DateTime value) =>
@@ -322,16 +455,97 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    M400AuthCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          M400SectionTitle(
+                            icon: Icons.verified_user_outlined,
+                            title: 'Identity verification',
+                            subtitle: isCitizen
+                                ? 'Enter your MyKad number and add clear photos of both sides.'
+                                : 'Photograph the passport details page to fill readable dates and issuing country. Enter its passport number to verify the photo.',
+                          ),
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: _identityNumberCtrl,
+                            decoration: m400InputDecoration(
+                              label: isCitizen
+                                  ? 'MyKad number'
+                                  : 'Passport number',
+                              helper: isCitizen
+                                  ? '12 digits, for example 900101-14-5566'
+                                  : '6-20 letters or numbers',
+                              prefixIcon: isCitizen
+                                  ? Icons.badge_outlined
+                                  : Icons.menu_book_outlined,
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                            onChanged: _onIdentityNumberChanged,
+                            validator: isCitizen
+                                ? Validators.malaysianIC
+                                : Validators.passportNumber,
+                          ),
+                          if (_checkingIdentity ||
+                              _identityCheckMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                _checkingIdentity
+                                    ? 'Checking this number in the system...'
+                                    : _identityCheckMessage!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _identityCheckFailed
+                                      ? M400AuthColors.error
+                                      : M400AuthColors.muted,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 22),
+                          IdentityDocumentCapture(
+                            key: ValueKey('${_requestedRole}_front'),
+                            requestedRole: _requestedRole,
+                            expectedIdentityNumber: _identityNumberCtrl.text,
+                            labelOverride: isCitizen
+                                ? 'MyKad front'
+                                : 'Passport front',
+                            onDocumentChanged: (document) =>
+                                _document = document,
+                            onTextExtracted: isCitizen
+                                ? null
+                                : _onPassportTextExtracted,
+                          ),
+                          if (isCitizen) ...[
+                            const SizedBox(height: 24),
+                            const Divider(color: M400AuthColors.border),
+                            const SizedBox(height: 20),
+                            IdentityDocumentCapture(
+                              key: const ValueKey('citizen_back'),
+                              requestedRole: _requestedRole,
+                              labelOverride: 'MyKad back',
+                              expectedIdentityNumber: _identityNumberCtrl.text,
+                              side: IdentityDocumentSide.back,
+                              onDocumentChanged: (document) {
+                                _backDocument = document;
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                     if (!isCitizen) ...[
                       const SizedBox(height: 16),
                       M400AuthCard(
                         child: Column(
                           children: [
-                            const M400SectionTitle(
+                            M400SectionTitle(
                               icon: Icons.flight_takeoff_outlined,
                               title: 'Passport details',
                               subtitle:
-                                  'Add the passport issue and travel dates.',
+                                  _passportScanFeedback ??
+                                  'Capture the passport details page to fill readable dates and issuing country. You can also enter these yourself. The country may appear as a three-letter passport code.',
                             ),
                             const SizedBox(height: 20),
                             TextFormField(
@@ -352,6 +566,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _passportIssueCtrl,
                               readOnly: true,
                               onTap: _choosePassportIssueDate,
+                              validator: _validateIssueDate,
                               decoration: m400InputDecoration(
                                 label: 'Passport issue date (optional)',
                                 hint: 'YYYY-MM-DD',
@@ -367,6 +582,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               controller: _passportExpiryCtrl,
                               readOnly: true,
                               onTap: _choosePassportExpiryDate,
+                              validator: _validateExpiryDate,
                               decoration: m400InputDecoration(
                                 label: 'Passport expiry date',
                                 hint: 'YYYY-MM-DD',
@@ -376,9 +592,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   color: M400AuthColors.muted,
                                 ),
                               ),
-                              validator: (_) => _passportExpiryDate == null
-                                  ? 'Passport expiry date is required'
-                                  : null,
                             ),
                             const SizedBox(height: 14),
                             TextFormField(
@@ -393,67 +606,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    M400AuthCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          M400SectionTitle(
-                            icon: Icons.verified_user_outlined,
-                            title: 'Identity verification',
-                            subtitle: isCitizen
-                                ? 'Enter your MyKad number and add clear photos of both sides.'
-                                : 'Enter your passport number and add a clear photo.',
-                          ),
-                          const SizedBox(height: 20),
-                          TextFormField(
-                            controller: _identityNumberCtrl,
-                            decoration: m400InputDecoration(
-                              label: isCitizen
-                                  ? 'MyKad number'
-                                  : 'Passport number',
-                              helper: isCitizen
-                                  ? '12 digits, for example 900101-14-5566'
-                                  : '6-20 letters or numbers',
-                              prefixIcon: isCitizen
-                                  ? Icons.badge_outlined
-                                  : Icons.menu_book_outlined,
-                            ),
-                            textCapitalization: TextCapitalization.characters,
-                            onChanged: (_) => setState(() {}),
-                            validator: isCitizen
-                                ? Validators.malaysianIC
-                                : Validators.passportNumber,
-                          ),
-                          const SizedBox(height: 22),
-                          IdentityDocumentCapture(
-                            key: ValueKey('${_requestedRole}_front'),
-                            requestedRole: _requestedRole,
-                            expectedIdentityNumber: _identityNumberCtrl.text,
-                            labelOverride: isCitizen
-                                ? 'MyKad front'
-                                : 'Passport front',
-                            onDocumentChanged: (document) {
-                              _document = document;
-                            },
-                          ),
-                          if (isCitizen) ...[
-                            const SizedBox(height: 24),
-                            const Divider(color: M400AuthColors.border),
-                            const SizedBox(height: 20),
-                            IdentityDocumentCapture(
-                              key: const ValueKey('citizen_back'),
-                              requestedRole: _requestedRole,
-                              labelOverride: 'MyKad back',
-                              requiresOcr: false,
-                              onDocumentChanged: (document) {
-                                _backDocument = document;
-                              },
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 22),
                     M400PrimaryButton(
                       label: 'Register',

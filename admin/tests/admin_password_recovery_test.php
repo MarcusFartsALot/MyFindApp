@@ -28,6 +28,28 @@ $passwordCases = [
     ['StrongPassword1!', null],
 ];
 
+$registeredAdminId = '00000000-0000-4000-8000-000000000001';
+assert_recovery_test(
+    admin_recovery_registered_auth_id(['role' => 'admin', 'auth_id' => $registeredAdminId]),
+    $registeredAdminId,
+    'A registered linked administrator must be eligible.'
+);
+foreach ([
+    [null, 'Email not registered in system.'],
+    [['role' => 'tourist', 'auth_id' => $registeredAdminId], 'This email is not an Administrator account. Use Forgot password in the MyFind app.'],
+    [['role' => 'citizen', 'auth_id' => $registeredAdminId], 'This email is not an Administrator account. Use Forgot password in the MyFind app.'],
+    [['role' => 'admin', 'auth_id' => null], 'This registration is not linked to an active login account. Please contact support.'],
+    [['role' => 'admin', 'auth_id' => 'invalid'], 'This registration is not linked to an active login account. Please contact support.'],
+] as [$profile, $expectedMessage]) {
+    $message = null;
+    try {
+        admin_recovery_registered_auth_id($profile);
+    } catch (AdminRecoveryRequestError $error) {
+        $message = $error->getMessage();
+    }
+    assert_recovery_test($message, $expectedMessage, 'Ineligible accounts must stop before sending.');
+}
+
 foreach ($passwordCases as [$password, $expected]) {
     assert_recovery_test(
         admin_password_validation_error($password),

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../models/profile_model.dart';
-import '../../services/auth_service.dart';
-import '../auth/login_screen.dart';
+import 'package:my_find/M400/models/profile_model.dart';
+import 'package:my_find/M400/services/auth_service.dart';
+import '../auth/about_screen.dart';
 import 'role_router.dart';
 
 class SessionGate extends StatefulWidget {
@@ -50,7 +50,7 @@ class _SessionGateState extends State<SessionGate> {
   @override
   Widget build(BuildContext context) {
     if (_authService.currentSession == null || _profileFuture == null) {
-      return const LoginScreen();
+      return const AboutScreen();
     }
 
     return FutureBuilder<ProfileModel>(
