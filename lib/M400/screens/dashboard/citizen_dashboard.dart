@@ -1,5 +1,7 @@
 import 'package:my_find/M300/models/notification_time.dart';
+import 'package:my_find/M300/widgets/report_success_dialog.dart';
 import 'package:my_find/M300/models/notification_delivery.dart';
+import 'package:my_find/M300/services/notification_popup_observer.dart';
 import 'dart:async';
 import 'package:my_find/M300/services/incident_location_access.dart';
 
@@ -445,13 +447,39 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
   List<Map<String, dynamic>> _notifications = const [];
   bool _showingPopup = false;
+  bool _deliveryReady = false;
+  int _deliveryRevision = 0;
+
+  Future<void> _initializeDelivery() async {
+    final revision = ++_deliveryRevision;
+    final owner = widget.profile.id;
+    _deliveryReady = false;
+    try {
+      await _delivery.initialize(owner);
+    } catch (error) {
+      // Keep live notifications available if local preferences cannot be read.
+      debugPrint('Could not restore notification popup history: $error');
+    }
+    if (!mounted || revision != _deliveryRevision || owner != widget.profile.id) {
+      return;
+    }
+    _deliveryReady = true;
+    _subscribeToNotifications();
+    _refreshNotifications();
+  }
+
+  void _onPopupChanged() {
+    if (!NotificationPopupObserver.instance.blocked.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showNextPopup());
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _subscribeToNotifications();
-    _refreshNotifications();
+    NotificationPopupObserver.instance.blocked.addListener(_onPopupChanged);
+    _initializeDelivery();
     _fallbackTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_foreground) _refreshNotifications();
     });
@@ -462,17 +490,16 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profile.id != widget.profile.id) {
       _subscription?.cancel();
-      _delivery.clear();
       _pendingPopups.clear();
       _notifications = const [];
-      _subscribeToNotifications();
-      _refreshNotifications();
+      _initializeDelivery();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    NotificationPopupObserver.instance.blocked.removeListener(_onPopupChanged);
     _fallbackTimer?.cancel();
     _subscription?.cancel();
     super.dispose();
@@ -488,7 +515,7 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
   }
 
   Future<void> _refreshNotifications() async {
-    if (_checking || !mounted) return;
+    if (_checking || !mounted || !_deliveryReady) return;
     _checking = true;
     final owner = widget.profile.id;
     try {
@@ -509,12 +536,20 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
   }
 
   void _subscribeToNotifications() {
+    final revision = _deliveryRevision;
+    final owner = widget.profile.id;
     _subscription = _supabase
         .from('notifications')
         .stream(primaryKey: ['id'])
-        .eq('user_id', widget.profile.id)
+        .eq('user_id', owner)
         .listen(
-          _handleNotificationSnapshot,
+          (records) {
+            if (mounted &&
+                revision == _deliveryRevision &&
+                owner == widget.profile.id) {
+              _handleNotificationSnapshot(records);
+            }
+          },
           onError: (Object error) {
             debugPrint('Citizen notification stream error: $error');
           },
@@ -522,6 +557,7 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
   }
 
   void _handleNotificationSnapshot(List<Map<String, dynamic>> data) {
+    if (!mounted || !_deliveryReady) return;
     final notifications = List<Map<String, dynamic>>.from(data)
       ..sort((a, b) {
         final first = NotificationTime.parse(a['created_at']?.toString() ?? '');
@@ -547,7 +583,12 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
   }
 
   Future<void> _showNextPopup() async {
-    if (_showingPopup || _pendingPopups.isEmpty || !mounted || !_foreground) {
+    if (_showingPopup ||
+        _pendingPopups.isEmpty ||
+        !mounted ||
+        !_foreground ||
+        !_deliveryReady ||
+        NotificationPopupObserver.instance.blocked.value) {
       return;
     }
     _showingPopup = true;
@@ -562,74 +603,30 @@ class _DynamicNotificationBellState extends State<_DynamicNotificationBell>
         : const Color(0xFF15803D);
     final icon = isRejected ? Icons.cancel_rounded : Icons.verified_rounded;
 
-    final openNotifications = await showDialog<bool>(
+    final popup = showDialog<bool>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: accent, size: 34),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    icon: const Icon(Icons.notifications_active_rounded),
-                    label: const Text('View notifications'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A8A),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Later'),
-                ),
-              ],
-            ),
-          ),
+        return ReportFeedbackDialog(
+          title: title,
+          message: message,
+          icon: icon,
+          accent: accent,
+          primaryLabel: 'View notifications',
+          onDone: () => Navigator.of(dialogContext).pop(true),
+          secondaryLabel: 'Later',
+          onSecondary: () => Navigator.of(dialogContext).pop(false),
         );
       },
     );
+
+    // Record delivery when the popup is offered, regardless of Later/read status.
+    try {
+      await _delivery.markShown(notification['id'].toString());
+    } catch (error) {
+      debugPrint('Could not persist notification popup delivery: $error');
+    }
+    final openNotifications = await popup;
 
     if (openNotifications == true && mounted) {
       unawaited(_markAsRead(notification));

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'M300/services/notification_popup_observer.dart';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -84,6 +85,7 @@ class _MyFindAppState extends State<MyFindApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
+      navigatorObservers: [NotificationPopupObserver.instance],
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

@@ -3,6 +3,34 @@ import 'package:file_picker/file_picker.dart';
 
 /// Single source of validation rules for submitting and editing incidents.
 abstract final class ReportValidation {
+  /// Applies identical attachment rules to new and edited reports, including
+  /// duplicate names within the same picker selection.
+  static ({List<PlatformFile> accepted, List<String> errors}) selectEvidence(
+    Iterable<PlatformFile> files, {
+    required Iterable<String> existingNames,
+  }) {
+    final names = existingNames.map((name) => name.toLowerCase()).toSet();
+    final accepted = <PlatformFile>[];
+    final errors = <String>[];
+    final duplicates = <String>[];
+    for (final file in files) {
+      final error = evidence(file);
+      if (error != null) {
+        errors.add('${file.name}: $error');
+      } else if (!names.add(file.name.toLowerCase())) {
+        duplicates.add(file.name);
+      } else {
+        accepted.add(file);
+      }
+    }
+    if (duplicates.isNotEmpty) {
+      errors.add(
+        'Already attached: ${duplicates.join(", ")}. Choose another file.',
+      );
+    }
+    return (accepted: accepted, errors: errors);
+  }
+
   static String? text(String? value, {int min = 0, required int max}) {
     final length = (value ?? '').trim().characters.length;
     if (length < min) return 'Enter at least $min characters.';
@@ -54,8 +82,11 @@ abstract final class ReportValidation {
     ].contains(file.extension?.toLowerCase())) {
       return 'Choose a JPG, PNG, MP4 or MOV file.';
     }
-    if (file.size <= 0 || file.size >= 10 * 1024 * 1024) {
-      return 'Choose a nonempty file smaller than 10 MB.';
+    if (file.size <= 0) {
+      return 'This file is empty. Choose another photo or video.';
+    }
+    if (file.size >= 10 * 1024 * 1024) {
+      return 'This file is too large. Choose a photo or video under 10 MB.';
     }
     if (file.path == null && file.bytes == null) {
       return 'This file is unavailable. Please select it again.';

@@ -293,66 +293,15 @@ class _SubmitReportScreenState extends State<SubmitReportScreen> {
 
     if (result == null || !mounted) return;
 
-    final List<PlatformFile> validFiles = [];
-    final List<String> duplicateFileNames = [];
-    final List<String> invalidFiles = [];
-
-    // Names of files already added to the form
-    final existingNames = _files.map((f) => f.name.toLowerCase()).toSet();
-
-    for (final file in result.files) {
-      // 1. Check file size threshold (10MB)
-      if (ReportValidation.evidence(file) != null) {
-        invalidFiles.add('${file.name}: ${ReportValidation.evidence(file)}');
-        continue;
-      }
-
-      final fileNameLower = file.name.toLowerCase();
-
-      // 2. Prevent Duplicate Attachments in this Report
-      if (existingNames.contains(fileNameLower)) {
-        duplicateFileNames.add(file.name);
-      } else {
-        validFiles.add(file);
-        existingNames.add(fileNameLower);
-      }
-    }
-
-    // Show warning for oversized files
-    if (invalidFiles.isNotEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Skipped invalid file(s): ${invalidFiles.join(", ")}'),
-          backgroundColor: const Color(0xFFDC2626),
-        ),
-      );
-    }
-
-    // Show warning prompt for duplicate files
-    if (duplicateFileNames.isNotEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Skipped duplicate file(s): ${duplicateFileNames.join(", ")}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFD97706),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-
-    if (validFiles.isNotEmpty) {
-      setState(() => _files = [..._files, ...validFiles]);
+    final selection = ReportValidation.selectEvidence(
+      result.files,
+      existingNames: _files.map((file) => file.name),
+    );
+    setState(() {
+      _files = [..._files, ...selection.accepted];
+    });
+    if (selection.errors.isNotEmpty) {
+      await showEvidenceSelectionFeedback(context, selection.errors);
     }
   }
 

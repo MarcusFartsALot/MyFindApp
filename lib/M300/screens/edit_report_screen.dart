@@ -1,5 +1,6 @@
 import '../models/report_validation.dart';
 import '../widgets/evidence_tile.dart';
+import '../widgets/report_success_dialog.dart';
 import '../services/incident_location_access.dart';
 import '../models/incident_address.dart';
 import '../widgets/local_evidence_preview.dart';
@@ -254,73 +255,18 @@ class _EditReportScreenState extends State<EditReportScreen> {
     );
     if (result == null || !mounted) return;
 
-    final List<PlatformFile> validFiles = [];
-    final List<String> duplicateFileNames = [];
-
-    // Extract raw filenames from already saved paths
-    final existingNames = _existingMediaPaths
-        .map((path) => path.split('/').last.toLowerCase())
-        .toSet();
-
-    // Extract filenames from currently staged new files
-    final newlyAddedNames = _newFiles
-        .map((file) => file.name.toLowerCase())
-        .toSet();
-
-    for (final file in result.files) {
-      // 1. File size check
-      if (ReportValidation.evidence(file) != null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${file.name}: ${ReportValidation.evidence(file)}'),
-              backgroundColor: const Color(0xFFDC2626),
-            ),
-          );
-        }
-        continue;
-      }
-
-      final fileNameLower = file.name.toLowerCase();
-
-      // 2. Duplicate check
-      if (existingNames.contains(fileNameLower) ||
-          newlyAddedNames.contains(fileNameLower)) {
-        duplicateFileNames.add(file.name);
-      } else {
-        validFiles.add(file);
-        newlyAddedNames.add(fileNameLower);
-      }
-    }
-
-    // 3. Show warning dialog if duplicates were detected
-    if (duplicateFileNames.isNotEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Skipped duplicate file(s): ${duplicateFileNames.join(", ")}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFFD97706),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-
-    // 4. Add valid files
-    if (validFiles.isNotEmpty) {
-      setState(() {
-        _newFiles = [..._newFiles, ...validFiles];
-      });
+    final selection = ReportValidation.selectEvidence(
+      result.files,
+      existingNames: [
+        ..._existingMediaPaths.map((path) => path.split('/').last),
+        ..._newFiles.map((file) => file.name),
+      ],
+    );
+    setState(() {
+      _newFiles = [..._newFiles, ...selection.accepted];
+    });
+    if (selection.errors.isNotEmpty) {
+      await showEvidenceSelectionFeedback(context, selection.errors);
     }
   }
 
@@ -395,13 +341,18 @@ class _EditReportScreenState extends State<EditReportScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report updated successfully.'),
-            backgroundColor: Color(0xFF15803D),
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => ReportFeedbackDialog(
+            title: 'Report updated',
+            message:
+                'Your changes were saved successfully. You can track the report using the same Ticket ID.',
+            ticketId: widget.report.ticketId,
+            onDone: () => Navigator.of(dialogContext).pop(),
           ),
         );
-        Navigator.pop(context);
+        if (mounted) Navigator.pop(context);
       }
     } on AppException catch (error) {
       if (mounted) {

@@ -317,7 +317,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
 
       final result = matches.first;
       final target = LatLng(result.latitude, result.longitude);
-      final marker = await _createSearchMarker(query);
+      final marker = await _createSearchMarker();
       if (!mounted) return;
       setState(() {
         _searchedLocation = target;
@@ -498,7 +498,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     _suggestionRequestId++;
     _locationSearchController.text = suggestion.label;
     FocusManager.instance.primaryFocus?.unfocus();
-    final marker = await _createSearchMarker(suggestion.shortLabel);
+    final marker = await _createSearchMarker();
     if (!mounted) return;
     setState(() {
       _searchedLocation = suggestion.position;
@@ -688,6 +688,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
             _zoneMarkerImages[zone.id] ??
             BitmapDescriptor.defaultMarkerWithHue(zone.risk.markerHue),
         anchor: const Offset(0.5, 1),
+        zIndexInt: 10,
         infoWindow: InfoWindow(
           title: '${zone.name} · ${zone.risk.label} zone',
           snippet:
@@ -705,8 +706,8 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
           icon:
               _searchedLocationMarker ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          anchor: const Offset(0.5, 0.8625),
-          zIndexInt: 10,
+          anchor: const Offset(0.5, 0.5),
+          zIndexInt: 0,
           infoWindow: InfoWindow(
             title: _searchedLocationLabel ?? 'Searched location',
           ),
@@ -773,61 +774,30 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     );
   }
 
-  Future<BitmapDescriptor> _createSearchMarker(String query) async {
-    final label = TextPainter(
-      text: TextSpan(
-        text: query,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      maxLines: 1,
-      ellipsis: '…',
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 190);
-    final width = (label.width + 40).ceil();
-    const height = 80;
+  Future<BitmapDescriptor> _createSearchMarker() async {
+    const size = 24;
+    const center = Offset(12, 12);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(2, 2, width - 4, 42),
-      const Radius.circular(14),
-    );
-    canvas.drawRRect(body, Paint()..color = const Color(0xFF243C91));
-    canvas.drawRRect(
-      body,
+    canvas.drawCircle(center, 10, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      7,
       Paint()
-        ..color = Colors.white
+        ..color = const Color(0xFF2563EB)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-    label.paint(
-      canvas,
-      Offset((width - label.width) / 2, 23 - label.height / 2),
-    );
-    canvas.drawLine(
-      Offset(width / 2, 44),
-      Offset(width / 2, 67),
-      Paint()
-        ..color = const Color(0xFF243C91)
         ..strokeWidth = 3,
     );
-    canvas.drawCircle(Offset(width / 2, 69), 9, Paint()..color = Colors.white);
-    canvas.drawCircle(
-      Offset(width / 2, 69),
-      6,
-      Paint()..color = const Color(0xFF243C91),
-    );
-    final image = await recorder.endRecording().toImage(width, height);
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size, size);
+    picture.dispose();
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     if (bytes == null) throw StateError('Could not create search marker.');
     return BytesMapBitmap(
       bytes.buffer.asUint8List(),
       bitmapScaling: MapBitmapScaling.auto,
-      width: width.toDouble(),
+      width: size.toDouble(),
     );
   }
 

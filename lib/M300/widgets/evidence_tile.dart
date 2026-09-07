@@ -1,4 +1,22 @@
 import 'package:flutter/material.dart';
+import 'report_success_dialog.dart';
+
+/// Rejected selections are feedback about the picker, not a persistent form error.
+Future<void> showEvidenceSelectionFeedback(
+  BuildContext context,
+  List<String> errors,
+) => showDialog<void>(
+  context: context,
+  builder: (dialogContext) => ReportFeedbackDialog(
+    title: 'Some files were not added',
+    message:
+        '${errors.join('\n\n')}\n\nOnly accepted files appear in your attachments. You can choose another file.',
+    icon: Icons.info_outline_rounded,
+    accent: const Color(0xFFB45309),
+    primaryLabel: 'Got it',
+    onDone: () => Navigator.of(dialogContext).pop(),
+  ),
+);
 
 class EvidenceAddButton extends StatelessWidget {
   final VoidCallback onAdd;
@@ -93,10 +111,7 @@ class EvidenceTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        [
-                          ?detail,
-                          'Tap to preview',
-                        ].join(' · '),
+                        [?detail, 'Tap to preview'].join(' · '),
                         style: const TextStyle(
                           fontSize: 11,
                           color: Color(0xFF64748B),
