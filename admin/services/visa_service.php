@@ -1,383 +1,570 @@
 <?php
+
 declare(strict_types=1);
 
-require_once dirname(__DIR__) . '/config/supabase.php';
+require_once __DIR__ . '/../config/supabase.php';
 
-final class VisaService
+class VisaService
 {
-    private SupabaseClient $client;
 
-    public function __construct(?SupabaseClient $client = null)
-    {
-        $this->client = $client ?? new SupabaseClient();
+    public function __construct(
+        private SupabaseClient $supabase
+    ) {
     }
-
-    // ============================================================
-    // 公共方法：获取数据
-    // ============================================================
 
     public function getPendingApplications(): array
     {
         try {
-            $result = $this->client->asService(
+            $response = $this->supabase->asService(
                 'GET',
-                '/rest/v1/visa_submissions?select=*&status=eq.pending&order=submitted_at.asc'
+                '/rest/v1/visa_submissions'
+                . '?select=*'
+                . '&status=eq.pending'
+                . '&order=submitted_at.desc'
             );
-            return is_array($result) ? $result : [];
+
+            return is_array($response) ? $response : [];
         } catch (Throwable $e) {
-            error_log('[VisaService] getPendingApplications error: ' . $e->getMessage());
-            return [];
+            throw new RuntimeException(
+                'Failed to load pending visa applications: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
         }
     }
 
     public function getApprovedTourists(): array
     {
         try {
-            $result = $this->client->asService(
+            $response = $this->supabase->asService(
                 'GET',
-                '/rest/v1/visa_submissions?select=*,entry_date,stay_until_date,actual_departure_date&status=eq.approved&order=visa_effective_date.desc'
+                '/rest/v1/visa_submissions'
+                . '?select=*'
+                . '&status=eq.approved'
+                . '&order=visa_effective_date.desc'
             );
-            return is_array($result) ? $result : [];
+
+            return is_array($response)
+                ? $response
+                : [];
         } catch (Throwable $e) {
-            error_log('[VisaService] getApprovedTourists error: ' . $e->getMessage());
-            return [];
+            throw new RuntimeException(
+                'Failed to load approved tourists: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
         }
     }
 
-    public function getTouristDetails(string $touristId): ?array
-    {
+    public function getTouristDetails(
+        string $submissionId
+    ): ?array {
+        $submissionId = trim($submissionId);
+
+        if ($submissionId === '') {
+            throw new InvalidArgumentException(
+                'Invalid submission ID.'
+            );
+        }
+
         try {
-            $result = $this->client->asService(
+            $response = $this->supabase->asService(
                 'GET',
-                '/rest/v1/visa_submissions?select=*,entry_date,stay_until_date,actual_departure_date&id=eq.' . rawurlencode($touristId) . '&limit=1'
+                '/rest/v1/visa_submissions'
+                . '?select=*'
+                . '&id=eq.' . rawurlencode($submissionId)
+                . '&limit=1'
             );
-            return is_array($result) && !empty($result) ? $result[0] : null;
-        } catch (Throwable $e) {
-            error_log('[VisaService] getTouristDetails error: ' . $e->getMessage());
-            return null;
-        }
-    }
 
-    public function getStatusHistory(string $touristId): array
-    {
-        try {
-            $result = $this->client->asService(
-                'GET',
-                '/rest/v1/visa_status_history?select=*&tourist_id=eq.' . rawurlencode($touristId) . '&order=created_at.desc'
-            );
-            return is_array($result) ? $result : [];
-        } catch (Throwable $e) {
-            error_log('[VisaService] getStatusHistory error: ' . $e->getMessage());
-            return [];
-        }
-    }
-
-    // ============================================================
-    // 统计数据
-    // ============================================================
-
-    public function getOverstayCount(): int
-    {
-        $approved = $this->getApprovedTourists();
-        $now = new DateTime();
-        $count = 0;
-        foreach ($approved as $t) {
-            if (!empty($t['stay_until_date'])) {
-                $stayUntil = new DateTime($t['stay_until_date']);
-                if ($stayUntil < $now) $count++;
+            if (!is_array($response) || empty($response)) {
+                return null;
             }
+
+            return $response[0];
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Failed to load tourist details: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
         }
-        return $count;
     }
 
-    public function getStatusDistribution(): array
-    {
-        $approved = $this->getApprovedTourists();
-        $now = new DateTime();
-        $green = $yellow = $red = 0;
-        foreach ($approved as $t) {
-            if (empty($t['stay_until_date'])) continue;
-            $stayUntil = new DateTime($t['stay_until_date']);
-            $remaining = $now->diff($stayUntil)->days;
-            if ($stayUntil > $now && $remaining > 10) $green++;
-            elseif ($stayUntil > $now && $remaining <= 10) $yellow++;
-            else $red++;
+    public function getStatusHistory(
+        string $submissionId
+    ): array {
+        $submissionId = trim($submissionId);
+
+        if ($submissionId === '') {
+            throw new InvalidArgumentException(
+                'Invalid submission ID.'
+            );
         }
-        return ['green' => $green, 'yellow' => $yellow, 'red' => $red];
+
+        try {
+            $response = $this->supabase->asService(
+                'GET',
+                '/rest/v1/visa_status_history'
+                . '?select=*'
+                . '&submission_id=eq.'
+                . rawurlencode($submissionId)
+                . '&order=created_at.desc'
+            );
+
+            return is_array($response) ? $response : [];
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'Failed to load visa status history: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
+        }
     }
 
     public function getTrendData(): array
     {
         try {
-            $end = new DateTime();
-            $start = (clone $end)->modify('-7 days');
-            $result = $this->client->asService(
+            $end = new DateTimeImmutable('today');
+            $start = $end->modify('-6 days');
+
+            $response = $this->supabase->asService(
                 'GET',
-                '/rest/v1/visa_submissions?select=submitted_at&status=eq.approved&submitted_at=gte.'
-                . rawurlencode($start->format('Y-m-d')) . '&submitted_at=lte.'
-                . rawurlencode($end->format('Y-m-d'))
+                '/rest/v1/visa_submissions'
+                . '?select=submitted_at,status'
+                . '&submitted_at=gte.'
+                . rawurlencode(
+                    $start->format('Y-m-d') . 'T00:00:00'
+                )
+                . '&submitted_at=lte.'
+                . rawurlencode(
+                    $end->format('Y-m-d') . 'T23:59:59'
+                )
             );
-            $data = [];
-            if (is_array($result)) {
-                $counts = [];
-                foreach ($result as $row) {
-                    $date = substr($row['submitted_at'] ?? '', 0, 10);
-                    $counts[$date] = ($counts[$date] ?? 0) + 1;
-                }
-                for ($i = 6; $i >= 0; $i--) {
-                    $date = (clone $end)->modify("-$i days")->format('Y-m-d');
-                    $data[] = ['date' => $date, 'count' => $counts[$date] ?? 0];
+
+            $counts = [];
+
+            for ($i = 0; $i < 7; $i++) {
+                $date = $start
+                    ->modify("+$i days")
+                    ->format('Y-m-d');
+
+                $counts[$date] = [
+                    'total' => 0,
+                    'approved' => 0,
+                    'rejected' => 0,
+                    'pending' => 0,
+                    'cancelled' => 0,
+                ];
+            }
+
+            if (is_array($response)) {
+                foreach ($response as $row) {
+                    $date = substr(
+                        (string)($row['submitted_at'] ?? ''),
+                        0,
+                        10
+                    );
+
+                    if (!isset($counts[$date])) {
+                        continue;
+                    }
+
+                    $counts[$date]['total']++;
+
+                    $status = strtolower(
+                        trim((string)($row['status'] ?? ''))
+                    );
+
+                    if (isset($counts[$date][$status])) {
+                        $counts[$date][$status]++;
+                    }
                 }
             }
+
+            $data = [];
+
+            foreach ($counts as $date => $count) {
+                $data[] = [
+                    'date' => $date,
+                    'total' => $count['total'],
+                    'approved' => $count['approved'],
+                    'rejected' => $count['rejected'],
+                    'pending' => $count['pending'],
+                    'cancelled' => $count['cancelled'],
+                ];
+            }
+
             return $data;
         } catch (Throwable $e) {
-            error_log('[VisaService] getTrendData error: ' . $e->getMessage());
-            return [];
+            throw new RuntimeException(
+                'Failed to load visa trend data: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
         }
     }
-
-    // ============================================================
-    // 判断签证是否有效 (Active/Inactive)
-    // ============================================================
 
     public function isVisaActive(array $tourist): bool
     {
-        $now = new DateTime();
-
-        // 1. 签证未生效 → Inactive
-        if (!empty($tourist['visa_effective_date'])) {
-            $effective = new DateTime($tourist['visa_effective_date']);
-            if ($effective > $now) return false;
-        }
-
-        // 2. 签证已过期 → Inactive
-        if (!empty($tourist['visa_expiry_date'])) {
-            $expiry = new DateTime($tourist['visa_expiry_date']);
-            if ($expiry < $now) return false;
-        }
-
-        // 3. SEV 单次入境：一旦离境即失效
-        $visaType = $tourist['visa_type'] ?? 'SEV';
-        if ($visaType === 'SEV' && !empty($tourist['actual_departure_date'])) {
-            $departure = new DateTime($tourist['actual_departure_date']);
-            if ($departure <= $now) return false;
-        }
-
-        return true;
-    }
-
-    // ============================================================
-    // 自动随机生成入境/离境记录
-    // ============================================================
-
-    private function generateDemoEntry(string $touristId, array $app, string $approvedDate): bool
-    {
-        try {
-            // 1. 确定实际入境日 (entry_date)
-            $arrivalDate = $app['arrival_date'] ?? null;
-            $approvedDateTime = new DateTime($approvedDate);
-            $entry = null;
-
-            if ($arrivalDate) {
-                $entry = new DateTime($arrivalDate);
-                $randomDays = random_int(-3, 3);
-                $entry->modify("$randomDays days");
-                if ($entry < $approvedDateTime) {
-                    $entry = clone $approvedDateTime;
-                    $entry->modify('+1 day');
-                }
-            } else {
-                $entry = clone $approvedDateTime;
-                $entry->modify('+3 days');
-            }
-            $entryDate = $entry->format('Y-m-d');
-
-            // 2. 确定实际离境日 (actual_departure_date)
-            $actualDepartureDate = null;
-            $departureDateSubmitted = $app['departure_date'] ?? null;
-
-            if ($departureDateSubmitted) {
-                $dep = new DateTime($departureDateSubmitted);
-                $randomDays = random_int(-3, 3);
-                $dep->modify("$randomDays days");
-                if ($dep > $entry) {
-                    $actualDepartureDate = $dep->format('Y-m-d');
-                }
-            }
-
-            if (!$actualDepartureDate && random_int(1, 100) <= 30) {
-                $dep = clone $entry;
-                $dep->modify('+' . random_int(5, 25) . ' days');
-                $actualDepartureDate = $dep->format('Y-m-d');
-            }
-
-            // 3. 停留截止日 = 入境日 + 30 天
-            $stayUntil = clone $entry;
-            $stayUntil->modify('+30 days');
-            $stayUntilDate = $stayUntil->format('Y-m-d');
-
-            // 4. 更新数据库
-            $updateData = [
-                'entry_date' => $entryDate,
-                'stay_until_date' => $stayUntilDate,
-                'actual_departure_date' => $actualDepartureDate,
-            ];
-
-            $this->client->asService(
-                'PATCH',
-                '/rest/v1/visa_submissions?id=eq.' . rawurlencode($touristId),
-                $updateData,
-                ['Prefer: return=representation']
-            );
-
-            error_log('[VisaService] Demo entry generated for: ' . $touristId .
-                      ' entry: ' . $entryDate .
-                      ' stay_until: ' . $stayUntilDate .
-                      ' actual_departure: ' . ($actualDepartureDate ?? 'none'));
-            return true;
-
-        } catch (Throwable $e) {
-            error_log('[VisaService] generateDemoEntry error: ' . $e->getMessage());
+        if (
+            strtolower(
+                trim((string)($tourist['status'] ?? ''))
+            ) !== 'approved'
+        ) {
             return false;
         }
-    }
 
-    // ============================================================
-    // Approve / Reject
-    // ============================================================
+        $today = new DateTimeImmutable('today');
 
-    public function approveVisa(string $submissionId, string $effectiveDate, array $admin): bool
-    {
-        if (empty($submissionId) || empty($effectiveDate)) {
-            throw new RuntimeException('Missing submission ID or effective date.');
+        $effectiveDate =
+            $tourist['visa_effective_date'] ?? null;
+
+        $expiryDate =
+            $tourist['visa_expiry_date'] ?? null;
+
+        if (!$effectiveDate || !$expiryDate) {
+            return false;
         }
-
-        $apps = $this->client->asService(
-            'GET',
-            '/rest/v1/visa_submissions?id=eq.' . rawurlencode($submissionId) . '&limit=1'
-        );
-        if (empty($apps) || !is_array($apps)) {
-            throw new RuntimeException('Application not found.');
-        }
-        $app = $apps[0];
-        if (($app['status'] ?? '') !== 'pending') {
-            throw new RuntimeException('Application already processed.');
-        }
-
-        $visaType = $app['visa_type'] ?? 'SEV';
-        $duration = ($visaType === 'MEV') ? 365 : 90;
-        $expiryDate = (new DateTime($effectiveDate))->modify("+$duration days")->format('Y-m-d');
-
-        $updateData = [
-            'status' => 'approved',
-            'visa_effective_date' => $effectiveDate,
-            'visa_expiry_date' => $expiryDate,
-            'verified_at' => gmdate('c'),
-            'verified_by' => $admin['id'] ?? null,
-        ];
 
         try {
-            $updated = $this->client->asService(
-                'PATCH',
-                '/rest/v1/visa_submissions?id=eq.' . rawurlencode($submissionId),
-                $updateData,
-                ['Prefer: return=representation']
+            $effective = new DateTimeImmutable(
+                (string)$effectiveDate
             );
-        } catch (SupabaseApiException $e) {
-            throw new RuntimeException('Supabase error: ' . $e->getMessage());
+
+            $expiry = new DateTimeImmutable(
+                (string)$expiryDate
+            );
+        } catch (Throwable) {
+            return false;
         }
 
-        if (empty($updated)) {
-            throw new RuntimeException('Failed to approve visa.');
-        }
-
-        // 自动生成模拟入境记录
-        $this->generateDemoEntry($submissionId, $app, $effectiveDate);
-
-        // 发送通知
-        $profileId = $app['profile_id'] ?? null;
-        if ($profileId) {
-            try {
-                $this->client->asService(
-                    'POST',
-                    '/rest/v1/notifications',
-                    [
-                        'user_id' => $profileId,
-                        'title' => 'Visa Approved',
-                        'message' => 'Your visa application (' . $app['reference_id'] . ') has been approved. Effective date: ' . $effectiveDate,
-                        'type' => 'Alert',
-                        'is_read' => false,
-                        'created_at' => gmdate('c')
-                    ]
-                );
-            } catch (Throwable $e) {
-                error_log('[VisaService] Notification failed: ' . $e->getMessage());
-            }
+        if ($today < $effective || $today > $expiry) {
+            return false;
         }
 
         return true;
     }
 
-    public function rejectVisa(string $submissionId, string $reason, array $admin): bool
-    {
-        if (empty($submissionId)) {
-            throw new RuntimeException('Missing submission ID.');
+    public function approveVisa(
+        string $submissionId,
+        array $admin
+    ): bool {
+        $submissionId = trim($submissionId);
+
+        if ($submissionId === '') {
+            throw new InvalidArgumentException(
+                'Invalid submission ID.'
+            );
         }
 
-        $apps = $this->client->asService(
-            'GET',
-            '/rest/v1/visa_submissions?id=eq.' . rawurlencode($submissionId) . '&limit=1'
+        if (empty($admin)) {
+            throw new RuntimeException(
+                'Unable to identify the administrator.'
+            );
+        }
+
+        $adminId = trim(
+            (string)($admin['id'] ?? '')
         );
-        if (empty($apps)) {
-            throw new RuntimeException('Application not found.');
-        }
-        $app = $apps[0];
-        if (($app['status'] ?? '') !== 'pending') {
-            throw new RuntimeException('Application already processed.');
+
+        if ($adminId === '') {
+            throw new RuntimeException(
+                'Unable to identify the administrator.'
+            );
         }
 
-        $updateData = [
-            'status' => 'rejected',
-            'rejection_reason' => $reason ?: null,
-            'verified_at' => gmdate('c'),
-            'verified_by' => $admin['id'] ?? null,
-        ];
+        $submission =
+            $this->getTouristDetails($submissionId);
+
+        if (!$submission) {
+            throw new RuntimeException(
+                'Visa submission not found.'
+            );
+        }
+
+        if (
+            strtolower(
+                (string)($submission['status'] ?? '')
+            ) !== 'pending'
+        ) {
+            throw new RuntimeException(
+                'Only pending visa applications can be approved.'
+            );
+        }
+
+        $visaType = strtoupper(
+            trim((string)($submission['visa_type'] ?? ''))
+        );
+
+        if (!in_array($visaType, ['SEV', 'MEV'], true)) {
+            throw new RuntimeException(
+                'Invalid visa type. Visa type must be SEV or MEV.'
+            );
+        }
+
+        $effectiveDate = new DateTimeImmutable('today');
+
+        $validityDays = $visaType === 'SEV'
+            ? 90
+            : 365;
+
+        $expiryDate = $effectiveDate->modify(
+            '+' . $validityDays . ' days'
+        );
+
+        $approvedAt = new DateTimeImmutable();
 
         try {
-            $updated = $this->client->asService(
+            $updated = $this->supabase->asService(
                 'PATCH',
-                '/rest/v1/visa_submissions?id=eq.' . rawurlencode($submissionId),
-                $updateData,
+                '/rest/v1/visa_submissions'
+                . '?id=eq.' . rawurlencode($submissionId)
+                . '&status=eq.pending',
+                [
+                    'status' => 'approved',
+                    'visa_type' => $visaType,
+                    'visa_effective_date' =>
+                        $effectiveDate->format('Y-m-d'),
+                    'visa_expiry_date' =>
+                        $expiryDate->format('Y-m-d'),
+                    'approved_at' =>
+                        $approvedAt->format(
+                            DateTimeInterface::ATOM
+                        ),
+                    'approved_by' => $adminId,
+                ],
                 ['Prefer: return=representation']
             );
-        } catch (SupabaseApiException $e) {
-            throw new RuntimeException('Supabase error: ' . $e->getMessage());
-        }
 
-        if (empty($updated)) {
-            throw new RuntimeException('Failed to reject visa.');
-        }
-
-        $profileId = $app['profile_id'] ?? null;
-        if ($profileId) {
-            try {
-                $this->client->asService(
-                    'POST',
-                    '/rest/v1/notifications',
-                    [
-                        'user_id' => $profileId,
-                        'title' => 'Visa Rejected',
-                        'message' => 'Your visa application (' . $app['reference_id'] . ') has been rejected.' . ($reason ? ' Reason: ' . $reason : ''),
-                        'type' => 'Alert',
-                        'is_read' => false,
-                        'created_at' => gmdate('c')
-                    ]
+            if (empty($updated)) {
+                throw new RuntimeException(
+                    'Failed to approve visa application.'
                 );
-            } catch (Throwable $e) {
-                error_log('[VisaService] Notification failed: ' . $e->getMessage());
             }
+        } catch (SupabaseApiException $e) {
+            throw new RuntimeException(
+                'Failed to approve visa application: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
         }
+
+        $this->sendNotification(
+            $submission['profile_id'] ?? null,
+            'Visa Application Approved',
+            'Your visa application ('
+            . ($submission['reference_id'] ?? '')
+            . ') has been approved. Effective date: '
+            . $effectiveDate->format('Y-m-d')
+            . '. Visa type: '
+            . $visaType
+            . '.'
+        );
 
         return true;
+    }
+
+    public function rejectVisa(
+        string $submissionId,
+        string $reason,
+        array $admin
+    ): bool {
+        $submissionId = trim($submissionId);
+        $reason = trim($reason);
+
+        if ($submissionId === '') {
+            throw new InvalidArgumentException(
+                'Invalid submission ID.'
+            );
+        }
+
+        if ($reason === '') {
+            throw new InvalidArgumentException(
+                'Rejection reason is required.'
+            );
+        }
+
+        if (empty($admin)) {
+            throw new RuntimeException(
+                'Unable to identify the administrator.'
+            );
+        }
+
+        $adminId = trim(
+            (string)($admin['id'] ?? '')
+        );
+
+        if ($adminId === '') {
+            throw new RuntimeException(
+                'Unable to identify the administrator.'
+            );
+        }
+
+        $submission =
+            $this->getTouristDetails($submissionId);
+
+        if (!$submission) {
+            throw new RuntimeException(
+                'Visa submission not found.'
+            );
+        }
+
+        if (
+            strtolower(
+                (string)($submission['status'] ?? '')
+            ) !== 'pending'
+        ) {
+            throw new RuntimeException(
+                'Only pending visa applications can be rejected.'
+            );
+        }
+
+        try {
+            $updated = $this->supabase->asService(
+                'PATCH',
+                '/rest/v1/visa_submissions'
+                . '?id=eq.' . rawurlencode($submissionId)
+                . '&status=eq.pending',
+                [
+                    'status' => 'rejected',
+                    'rejection_reason' => $reason,
+                ],
+                ['Prefer: return=representation']
+            );
+
+            if (empty($updated)) {
+                throw new RuntimeException(
+                    'Failed to reject visa application.'
+                );
+            }
+        } catch (SupabaseApiException $e) {
+            throw new RuntimeException(
+                'Failed to reject visa application: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
+        }
+
+        $this->sendNotification(
+            $submission['profile_id'] ?? null,
+            'Visa Application Rejected',
+            'Your visa application ('
+            . ($submission['reference_id'] ?? '')
+            . ') has been rejected.'
+        );
+
+        return true;
+    }
+
+    public function cancelPendingVisa(
+        string $submissionId,
+        string $profileId
+    ): bool {
+        $submissionId = trim($submissionId);
+        $profileId = trim($profileId);
+
+        if (
+            $submissionId === ''
+            || $profileId === ''
+        ) {
+            throw new InvalidArgumentException(
+                'Invalid cancellation information.'
+            );
+        }
+
+        $submission =
+            $this->getTouristDetails($submissionId);
+
+        if (!$submission) {
+            throw new RuntimeException(
+                'Visa submission not found.'
+            );
+        }
+
+        if (
+            (string)($submission['profile_id'] ?? '')
+            !== $profileId
+        ) {
+            throw new RuntimeException(
+                'You are not authorized to cancel this application.'
+            );
+        }
+
+        if (
+            strtolower(
+                (string)($submission['status'] ?? '')
+            ) !== 'pending'
+        ) {
+            throw new RuntimeException(
+                'Only pending visa applications can be cancelled.'
+            );
+        }
+
+        try {
+            $updated = $this->supabase->asService(
+                'PATCH',
+                '/rest/v1/visa_submissions'
+                . '?id=eq.' . rawurlencode($submissionId)
+                . '&profile_id=eq.'
+                . rawurlencode($profileId)
+                . '&status=eq.pending',
+                [
+                    'status' => 'cancelled',
+                ],
+                ['Prefer: return=representation']
+            );
+
+            if (empty($updated)) {
+                throw new RuntimeException(
+                    'The pending application is no longer available '
+                    . 'for cancellation.'
+                );
+            }
+
+            return true;
+        } catch (SupabaseApiException $e) {
+            throw new RuntimeException(
+                'Failed to cancel visa application: '
+                . $e->getMessage(),
+                0,
+                $e
+            );
+        }
+    }
+
+    private function sendNotification(
+        ?string $profileId,
+        string $title,
+        string $message
+    ): void {
+        if (!$profileId) {
+            return;
+        }
+
+        try {
+            $this->supabase->asService(
+                'POST',
+                '/rest/v1/notifications',
+                [
+                    'profile_id' => $profileId,
+                    'title' => $title,
+                    'message' => $message,
+                    'is_read' => false,
+                ],
+                ['Prefer: return=minimal']
+            );
+        } catch (Throwable $e) {
+            error_log(
+                '[VisaService] Notification failed: '
+                . $e->getMessage()
+            );
+        }
     }
 }
