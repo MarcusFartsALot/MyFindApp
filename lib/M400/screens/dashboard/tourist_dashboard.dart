@@ -386,7 +386,7 @@ class _TouristDashboardState extends State<TouristDashboard> {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => VisaSubmitScreenM500(
-                  profile: _currentProfile,
+                  profileId: _currentProfile.id,
                 ),
               ),
             );
