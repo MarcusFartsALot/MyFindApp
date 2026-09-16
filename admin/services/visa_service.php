@@ -553,9 +553,10 @@ class VisaService
                 'POST',
                 '/rest/v1/notifications',
                 [
-                    'profile_id' => $profileId,
+                    'user_id' => $profileId,
                     'title' => $title,
                     'message' => $message,
+                    'type' => 'Alert',
                     'is_read' => false,
                 ],
                 ['Prefer: return=minimal']

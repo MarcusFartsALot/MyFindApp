@@ -804,6 +804,104 @@ foreach ($normalizedTourists as $tourist) {
     }
 }
 
+
+// Report presentation data
+$needsAttentionCount =
+    $expiringSoonCount
+    + $departureNotReportedCount;
+
+$completedCount =
+    $departedCount
+    + $usedCount;
+
+$attentionTourists = array_values(
+    array_filter(
+        $normalizedTourists,
+        static function (array $tourist): bool {
+            $status = normalizeStatus(
+                $tourist['_status']
+                    ?? ''
+            );
+
+            return in_array(
+                $status,
+                [
+                    'EXPIRING_SOON',
+                    'DEPARTURE_NOT_REPORTED',
+                ],
+                true
+            );
+        }
+    )
+);
+
+usort(
+    $attentionTourists,
+    static function (array $a, array $b): int {
+        $aStatus = normalizeStatus(
+            $a['_status'] ?? ''
+        );
+        $bStatus = normalizeStatus(
+            $b['_status'] ?? ''
+        );
+
+        $priority = static fn(string $status): int =>
+            $status === 'DEPARTURE_NOT_REPORTED'
+                ? 0
+                : 1;
+
+        $priorityCompare =
+            $priority($aStatus)
+            <=> $priority($bStatus);
+
+        if ($priorityCompare !== 0) {
+            return $priorityCompare;
+        }
+
+        return
+            (int)($a['_remaining_days'] ?? PHP_INT_MAX)
+            <=>
+            (int)($b['_remaining_days'] ?? PHP_INT_MAX);
+    }
+);
+
+$attentionPreview = array_slice(
+    $attentionTourists,
+    0,
+    6
+);
+
+$travelStatusChart = [
+    'labels' => [
+        'Not Entered',
+        'Active',
+        'Expiring Soon',
+        'Departure Not Reported',
+        'Departed',
+        'Used',
+        'Expired',
+    ],
+    'values' => [
+        $notEnteredCount,
+        $activeCount,
+        $expiringSoonCount,
+        $departureNotReportedCount,
+        $departedCount,
+        $usedCount,
+        $expiredCount,
+    ],
+];
+
+$visaTypeChart = [
+    'labels' => ['SEV', 'MEV'],
+    'values' => [$sevCount, $mevCount],
+];
+
+if ($otherVisaCount > 0) {
+    $visaTypeChart['labels'][] = 'Other';
+    $visaTypeChart['values'][] = $otherVisaCount;
+}
+
 render_admin_start(
     'Visa Management',
     $admin,
@@ -1507,111 +1605,321 @@ render_admin_start(
 }
 
 /* Reports */
-.report-grid {
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:12px;
-}
-
-.report-card {
-    border:1px solid var(--vm-border);
-    border-radius:14px;
-    background:#fff;
-    padding:15px;
-}
-
-.report-card-label {
-    color:#94a3b8;
-    font-size:9px;
-    font-weight:750;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-}
-
-.report-card-value {
-    margin-top:7px;
-    color:#0f172a;
-    font-size:24px;
-    font-weight:850;
-}
-
-.report-panels {
-    display:grid;
-    grid-template-columns:repeat(2,minmax(0,1fr));
+.report-shell {
+    display:flex;
+    flex-direction:column;
     gap:14px;
-    margin-top:14px;
 }
 
-.report-panel {
-    border:1px solid var(--vm-border);
-    border-radius:14px;
-    background:#fff;
-    overflow:hidden;
+.report-toolbar {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:18px;
+    padding:2px 2px 0;
 }
 
-.report-panel-head {
-    padding:14px 16px;
-    border-bottom:1px solid #edf0f4;
+.report-toolbar-copy {
+    min-width:0;
 }
 
-.report-panel-title {
+.report-toolbar-title {
     margin:0;
-    font-size:12px;
-    font-weight:800;
-}
-
-.report-panel-subtitle {
-    margin:3px 0 0;
-    color:#94a3b8;
-    font-size:9px;
-}
-
-.report-table {
-    width:100%;
-    border-collapse:collapse;
-}
-
-.report-table td,
-.report-table th {
-    padding:10px 16px;
-    border-bottom:1px solid #edf0f4;
-    font-size:10px;
-    text-align:left;
-}
-
-.report-table tr:last-child td {
-    border-bottom:0;
-}
-
-.report-table td:last-child {
-    text-align:right;
-    font-weight:800;
-    color:#0f172a;
-}
-
-.report-highlight {
-    padding:18px 16px;
-}
-
-.big-value {
-    font-size:28px;
+    font-size:16px;
     font-weight:850;
-    color:#0f172a;
+    letter-spacing:-.015em;
 }
 
-.report-note {
-    margin:7px 0 0;
-    color:#64748b;
+.report-toolbar-subtitle {
+    margin:4px 0 0;
+    color:var(--vm-muted);
     font-size:10px;
     line-height:1.5;
 }
 
-.interpretation {
+.report-toolbar-actions {
+    display:flex;
+    align-items:center;
+    gap:7px;
+    flex-wrap:wrap;
+}
+
+.report-kpis {
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    border:1px solid var(--vm-border);
+    border-radius:13px;
+    background:#fff;
+    overflow:hidden;
+}
+
+.report-kpi {
+    min-width:0;
+    padding:13px 15px;
+    border-right:1px solid #edf0f4;
+}
+
+.report-kpi:last-child {
+    border-right:0;
+}
+
+.report-kpi-label {
+    color:#94a3b8;
+    font-size:8px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+}
+
+.report-kpi-row {
+    display:flex;
+    align-items:baseline;
+    gap:7px;
+    margin-top:3px;
+}
+
+.report-kpi-value {
+    color:#0f172a;
+    font-size:22px;
+    line-height:1.1;
+    font-weight:850;
+}
+
+.report-kpi-note {
+    color:#94a3b8;
+    font-size:9px;
+    line-height:1.35;
+}
+
+.report-kpi.attention .report-kpi-value {
+    color:#b91c1c;
+}
+
+.report-layout {
+    display:grid;
+    grid-template-columns:minmax(0,1.65fr) minmax(300px,.85fr);
+    gap:14px;
+}
+
+.report-surface {
+    border:1px solid var(--vm-border);
+    border-radius:13px;
+    background:#fff;
+    overflow:hidden;
+}
+
+.report-surface-head {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    padding:13px 15px 11px;
+    border-bottom:1px solid #edf0f4;
+}
+
+.report-surface-title {
     margin:0;
-    padding:14px 16px 14px 32px;
-    color:#475569;
-    font-size:10px;
-    line-height:1.7;
+    color:#0f172a;
+    font-size:11px;
+    font-weight:850;
+}
+
+.report-surface-subtitle {
+    margin:3px 0 0;
+    color:#94a3b8;
+    font-size:8px;
+    line-height:1.4;
+}
+
+.report-chart-body {
+    height:265px;
+    padding:13px 14px 10px;
+    position:relative;
+}
+
+.report-chart-body.compact {
+    height:190px;
+}
+
+.report-chart-body.trend {
+    height:210px;
+}
+
+.report-side-stack {
+    display:grid;
+    gap:14px;
+}
+
+.visa-type-wrap {
+    display:grid;
+    grid-template-columns:145px minmax(0,1fr);
+    align-items:center;
+    gap:6px;
+    padding:10px 12px 12px;
+}
+
+.visa-type-chart {
+    height:145px;
+    position:relative;
+}
+
+.report-mini-list {
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+.report-mini-row {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    font-size:9px;
+}
+
+.report-mini-label {
+    display:flex;
+    align-items:center;
+    gap:7px;
+    color:#64748b;
+    min-width:0;
+}
+
+.report-dot {
+    width:7px;
+    height:7px;
+    border-radius:999px;
+    flex:0 0 auto;
+}
+
+.report-mini-value {
+    color:#0f172a;
+    font-weight:850;
+}
+
+.report-expiry-strip {
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    border-top:1px solid #edf0f4;
+}
+
+.report-expiry-item {
+    padding:10px 11px;
+    border-right:1px solid #edf0f4;
+}
+
+.report-expiry-item:last-child {
+    border-right:0;
+}
+
+.report-expiry-value {
+    color:#0f172a;
+    font-size:16px;
+    font-weight:850;
+}
+
+.report-expiry-label {
+    margin-top:2px;
+    color:#94a3b8;
+    font-size:8px;
+}
+
+.report-inline-metric {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    padding:10px 13px;
+    border-top:1px solid #edf0f4;
+    color:#64748b;
+    font-size:9px;
+}
+
+.report-inline-metric strong {
+    color:#0f172a;
+    font-size:11px;
+}
+
+.report-attention-head-actions {
+    display:flex;
+    align-items:center;
+    gap:7px;
+    flex-wrap:wrap;
+}
+
+.attention-table {
+    width:100%;
+    border-collapse:collapse;
+}
+
+.attention-table th {
+    padding:8px 13px;
+    border-bottom:1px solid #e8edf3;
+    background:#f8fafc;
+    color:#94a3b8;
+    font-size:8px;
+    font-weight:800;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    text-align:left;
+}
+
+.attention-table td {
+    padding:10px 13px;
+    border-bottom:1px solid #edf0f4;
+    color:#334155;
+    font-size:9px;
+    vertical-align:middle;
+}
+
+.attention-table tbody tr:last-child td {
+    border-bottom:0;
+}
+
+.attention-table tbody tr:hover td {
+    background:#fbfdff;
+}
+
+.attention-person {
+    min-width:160px;
+}
+
+.attention-person strong {
+    display:block;
+    color:#0f172a;
+    font-size:9px;
+}
+
+.attention-person span {
+    display:block;
+    margin-top:2px;
+    color:#94a3b8;
+    font-size:8px;
+}
+
+.report-empty-inline {
+    padding:24px 16px;
+    text-align:center;
+    color:#94a3b8;
+    font-size:9px;
+}
+
+.report-footnote {
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    padding:10px 12px;
+    border:1px solid #e8edf3;
+    border-radius:11px;
+    background:#fbfcfe;
+    color:#64748b;
+    font-size:8px;
+    line-height:1.5;
+}
+
+.report-footnote i {
+    margin-top:1px;
+    color:#94a3b8;
 }
 
 @media (max-width:1100px) {
@@ -1631,9 +1939,24 @@ render_admin_start(
         grid-column:1/-1;
     }
 
-    .detail-grid,
-    .report-grid {
+    .detail-grid {
         grid-template-columns:repeat(2,1fr);
+    }
+
+    .report-layout {
+        grid-template-columns:1fr;
+    }
+
+    .report-kpis {
+        grid-template-columns:repeat(2,1fr);
+    }
+
+    .report-kpi:nth-child(2) {
+        border-right:0;
+    }
+
+    .report-kpi:nth-child(-n+2) {
+        border-bottom:1px solid #edf0f4;
     }
 }
 
@@ -1664,11 +1987,48 @@ render_admin_start(
     }
 
     .detail-grid,
-    .report-grid,
-    .report-panels,
     .monitor-summary,
-    .filters {
+    .filters,
+    .report-kpis {
         grid-template-columns:1fr;
+    }
+
+    .report-toolbar {
+        flex-direction:column;
+        align-items:stretch;
+    }
+
+    .report-toolbar-actions {
+        width:100%;
+    }
+
+    .report-toolbar-actions .btn {
+        flex:1;
+    }
+
+    .report-kpi {
+        border-right:0;
+        border-bottom:1px solid #edf0f4;
+    }
+
+    .report-kpi:last-child {
+        border-bottom:0;
+    }
+
+    .visa-type-wrap {
+        grid-template-columns:1fr;
+    }
+
+    .visa-type-chart {
+        height:165px;
+    }
+
+    .report-chart-body {
+        height:285px;
+    }
+
+    .attention-table {
+        min-width:700px;
     }
 
     .monitor-stat {
@@ -2669,342 +3029,397 @@ render_admin_start(
     <?php endif; ?>
 
     <?php if ($activeTab === 'reports'): ?>
-        <section class="section">
-            <div class="section-header">
-                <div>
-                    <h2 class="section-title">
+        <div class="report-shell">
+            <div class="report-toolbar">
+                <div class="report-toolbar-copy">
+                    <h2 class="report-toolbar-title">
                         Visa Monitoring Reports
                     </h2>
-
-                    <p class="section-description">
-                        Monitoring metrics based on approved visas
-                        and actual travel declarations.
+                    <p class="report-toolbar-subtitle">
+                        A compact view of approved visas, actual travel activity,
+                        attention cases, and report exports.
                     </p>
                 </div>
 
-                <span class="summary-pill">
-                    <i class="fa-solid fa-database"></i>
-                    <?= e($totalApproved) ?>
-                    approved records
-                </span>
+                <div class="report-toolbar-actions">
+                    <a
+                        href="visa_export.php?type=csv&export=all"
+                        class="btn btn-view"
+                        title="Export all approved monitoring records as CSV"
+                    >
+                        <i class="fa-solid fa-file-csv"></i>
+                        CSV
+                    </a>
+
+                    <a
+                        href="visa_export.php?type=pdf&export=all"
+                        class="btn btn-primary"
+                        title="Open the PDF report preview"
+                    >
+                        <i class="fa-regular fa-file-pdf"></i>
+                        PDF
+                    </a>
+                </div>
             </div>
 
-            <div class="section-body">
-                <div class="report-grid">
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Total Approved
-                        </div>
-
-                        <div class="report-card-value">
+            <div class="report-kpis">
+                <div class="report-kpi">
+                    <div class="report-kpi-label">
+                        Approved Visas
+                    </div>
+                    <div class="report-kpi-row">
+                        <div class="report-kpi-value">
                             <?= e($totalApproved) ?>
                         </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Active Stays
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($activeCount) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Expiring Soon
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($expiringSoonCount) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Departure Not Reported
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e(
-                                $departureNotReportedCount
-                            ) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Not Entered
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($notEnteredCount) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            Departed
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($departedCount) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            SEV
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($sevCount) ?>
-                        </div>
-                    </div>
-
-                    <div class="report-card">
-                        <div class="report-card-label">
-                            MEV
-                        </div>
-
-                        <div class="report-card-value">
-                            <?= e($mevCount) ?>
+                        <div class="report-kpi-note">
+                            total approved
                         </div>
                     </div>
                 </div>
 
-                <div class="report-panels">
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                Monitoring Risk Distribution
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Current actual-stay status
-                            </p>
-                        </div>
-
-                        <table class="report-table">
-                            <tr>
-                                <td>Active</td>
-                                <td><?= e($chartActive) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>Expiring Soon</td>
-                                <td><?= e($chartExpiring) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>Departure Not Reported</td>
-                                <td>
-                                    <?= e(
-                                        $chartDepartureNotReported
-                                    ) ?>
-                                </td>
-                            </tr>
-                        </table>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">
+                        Active Stays
                     </div>
-
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                Visa Type Distribution
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Approved visa composition
-                            </p>
+                    <div class="report-kpi-row">
+                        <div class="report-kpi-value">
+                            <?= e($activeCount) ?>
                         </div>
-
-                        <table class="report-table">
-                            <tr>
-                                <td>SEV</td>
-                                <td><?= e($sevCount) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>MEV</td>
-                                <td><?= e($mevCount) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>Other / Unspecified</td>
-                                <td>
-                                    <?= e($otherVisaCount) ?>
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                Stay Expiry Analysis
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Open stays approaching deadline
-                            </p>
-                        </div>
-
-                        <table class="report-table">
-                            <tr>
-                                <td>Within 7 days</td>
-                                <td><?= e($expiry7) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>Within 14 days</td>
-                                <td><?= e($expiry14) ?></td>
-                            </tr>
-
-                            <tr>
-                                <td>Within 30 days</td>
-                                <td><?= e($expiry30) ?></td>
-                            </tr>
-                        </table>
-                    </div>
-
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                Average Permitted Stay
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Based on actual trip records
-                            </p>
-                        </div>
-
-                        <div class="report-highlight">
-                            <div class="big-value">
-                                <?= $avgPermittedStay !== null
-                                    ? e(
-                                        (string)$avgPermittedStay
-                                    ) . ' days'
-                                    : '—'
-                                ?>
-                            </div>
-
-                            <p class="report-note">
-                                Calculated from
-                                visa_travel_records using actual
-                                entry and stay-until dates.
-                            </p>
+                        <div class="report-kpi-note">
+                            normal monitoring
                         </div>
                     </div>
+                </div>
 
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                7-Day Visa Activity
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Approved submission activity
-                            </p>
-                        </div>
-
-                        <?php if (empty($trendLabels)): ?>
-                            <div class="report-highlight">
-                                <p class="report-note">
-                                    No trend data available.
-                                </p>
-                            </div>
-                        <?php else: ?>
-                            <table class="report-table">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Activity</th>
-                                    </tr>
-                                </thead>
-
-                                <tbody>
-                                    <?php foreach (
-                                        $trendLabels
-                                        as $index => $label
-                                    ): ?>
-                                        <tr>
-                                            <td>
-                                                <?= e($label) ?>
-                                            </td>
-
-                                            <td>
-                                                <?= e(
-                                                    $trendValues[
-                                                        $index
-                                                    ] ?? 0
-                                                ) ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        <?php endif; ?>
+                <div class="report-kpi">
+                    <div class="report-kpi-label">
+                        Pending Review
                     </div>
-
-                    <div class="report-panel">
-                        <div class="report-panel-head">
-                            <h3 class="report-panel-title">
-                                Monitoring Interpretation
-                            </h3>
-
-                            <p class="report-panel-subtitle">
-                                Status meaning used by this module
-                            </p>
+                    <div class="report-kpi-row">
+                        <div class="report-kpi-value">
+                            <?= e($pendingCount) ?>
                         </div>
+                        <div class="report-kpi-note">
+                            awaiting decision
+                        </div>
+                    </div>
+                </div>
 
-                        <ul class="interpretation">
-                            <li>
-                                <strong>Active:</strong>
-                                actual arrival exists and the
-                                permitted stay remains valid.
-                            </li>
-
-                            <li>
-                                <strong>Expiring Soon:</strong>
-                                10 or fewer permitted-stay days
-                                remain.
-                            </li>
-
-                            <li>
-                                <strong>Departure Not Reported:</strong>
-                                permitted stay ended without an
-                                actual departure declaration.
-                            </li>
-
-                            <li>
-                                <strong>Not Entered:</strong>
-                                approved visa has no actual
-                                arrival record.
-                            </li>
-
-                            <li>
-                                <strong>Departed:</strong>
-                                latest MEV trip has been completed.
-                            </li>
-
-                            <li>
-                                <strong>Used:</strong>
-                                an SEV trip has been completed.
-                            </li>
-
-                            <li>
-                                <strong>Expired:</strong>
-                                visa validity has ended.
-                            </li>
-                        </ul>
+                <div class="report-kpi attention">
+                    <div class="report-kpi-label">
+                        Needs Attention
+                    </div>
+                    <div class="report-kpi-row">
+                        <div class="report-kpi-value">
+                            <?= e($needsAttentionCount) ?>
+                        </div>
+                        <div class="report-kpi-note">
+                            expiring / overdue
+                        </div>
                     </div>
                 </div>
             </div>
-        </section>
+
+            <div class="report-layout">
+                <section class="report-surface">
+                    <div class="report-surface-head">
+                        <div>
+                            <h3 class="report-surface-title">
+                                Current Travel Status
+                            </h3>
+                            <p class="report-surface-subtitle">
+                                Approved visas by dynamically derived monitoring state
+                            </p>
+                        </div>
+                        <span class="summary-pill">
+                            <?= e($totalApproved) ?> records
+                        </span>
+                    </div>
+                    <div class="report-chart-body">
+                        <canvas
+                            id="travelStatusChart"
+                            aria-label="Current travel status distribution"
+                        ></canvas>
+                    </div>
+                </section>
+
+                <div class="report-side-stack">
+                    <section class="report-surface">
+                        <div class="report-surface-head">
+                            <div>
+                                <h3 class="report-surface-title">
+                                    Visa Type Distribution
+                                </h3>
+                                <p class="report-surface-subtitle">
+                                    Approved SEV and MEV composition
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="visa-type-wrap">
+                            <div class="visa-type-chart">
+                                <canvas
+                                    id="visaTypeChart"
+                                    aria-label="Visa type distribution"
+                                ></canvas>
+                            </div>
+
+                            <div class="report-mini-list">
+                                <div class="report-mini-row">
+                                    <span class="report-mini-label">
+                                        <span
+                                            class="report-dot"
+                                            style="background:#2563eb"
+                                        ></span>
+                                        SEV
+                                    </span>
+                                    <span class="report-mini-value">
+                                        <?= e($sevCount) ?>
+                                    </span>
+                                </div>
+
+                                <div class="report-mini-row">
+                                    <span class="report-mini-label">
+                                        <span
+                                            class="report-dot"
+                                            style="background:#7c3aed"
+                                        ></span>
+                                        MEV
+                                    </span>
+                                    <span class="report-mini-value">
+                                        <?= e($mevCount) ?>
+                                    </span>
+                                </div>
+
+                                <?php if ($otherVisaCount > 0): ?>
+                                    <div class="report-mini-row">
+                                        <span class="report-mini-label">
+                                            <span
+                                                class="report-dot"
+                                                style="background:#94a3b8"
+                                            ></span>
+                                            Other
+                                        </span>
+                                        <span class="report-mini-value">
+                                            <?= e($otherVisaCount) ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="report-expiry-strip">
+                            <div class="report-expiry-item">
+                                <div class="report-expiry-value">
+                                    <?= e($expiry7) ?>
+                                </div>
+                                <div class="report-expiry-label">
+                                    within 7 days
+                                </div>
+                            </div>
+                            <div class="report-expiry-item">
+                                <div class="report-expiry-value">
+                                    <?= e($expiry14) ?>
+                                </div>
+                                <div class="report-expiry-label">
+                                    within 14 days
+                                </div>
+                            </div>
+                            <div class="report-expiry-item">
+                                <div class="report-expiry-value">
+                                    <?= e($expiry30) ?>
+                                </div>
+                                <div class="report-expiry-label">
+                                    within 30 days
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="report-inline-metric">
+                            <span>Average permitted stay</span>
+                            <strong>
+                                <?= $avgPermittedStay !== null
+                                    ? e((string)$avgPermittedStay) . ' days'
+                                    : '—'
+                                ?>
+                            </strong>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <section class="report-surface">
+                <div class="report-surface-head">
+                    <div>
+                        <h3 class="report-surface-title">
+                            7-Day Visa Activity
+                        </h3>
+                        <p class="report-surface-subtitle">
+                            Recent visa-submission activity reported by the existing trend source
+                        </p>
+                    </div>
+                </div>
+
+                <?php if (empty($trendLabels)): ?>
+                    <div class="report-empty-inline">
+                        No trend data available.
+                    </div>
+                <?php else: ?>
+                    <div class="report-chart-body trend">
+                        <canvas
+                            id="visaActivityChart"
+                            aria-label="Seven day visa activity trend"
+                        ></canvas>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <section class="report-surface">
+                <div class="report-surface-head">
+                    <div>
+                        <h3 class="report-surface-title">
+                            Requires Attention
+                        </h3>
+                        <p class="report-surface-subtitle">
+                            Expiring-soon and departure-not-reported records, prioritised for review
+                        </p>
+                    </div>
+
+                    <div class="report-attention-head-actions">
+                        <span class="summary-pill">
+                            <?= e($needsAttentionCount) ?> records
+                        </span>
+
+                        <?php if ($departureNotReportedCount > 0): ?>
+                            <a
+                                href="visa_export.php?type=csv&export=overstay"
+                                class="btn btn-reject"
+                                title="Export departure-not-reported records as CSV"
+                            >
+                                <i class="fa-solid fa-file-csv"></i>
+                                Overdue CSV
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if (empty($attentionPreview)): ?>
+                    <div class="report-empty-inline">
+                        No expiring-soon or overdue travel records require attention.
+                    </div>
+                <?php else: ?>
+                    <div class="table-wrap">
+                        <table class="attention-table">
+                            <thead>
+                                <tr>
+                                    <th>Tourist</th>
+                                    <th>Visa</th>
+                                    <th>Status</th>
+                                    <th>Stay Until</th>
+                                    <th>Remaining</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($attentionPreview as $tourist): ?>
+                                    <?php
+                                    $attentionStatus = normalizeStatus(
+                                        $tourist['_status'] ?? ''
+                                    );
+                                    ?>
+                                    <tr>
+                                        <td>
+                                            <div class="attention-person">
+                                                <strong>
+                                                    <?= e(
+                                                        $tourist['full_name']
+                                                            ?? 'Unknown Tourist'
+                                                    ) ?>
+                                                </strong>
+                                                <span>
+                                                    <?= e(
+                                                        $tourist['passport_number']
+                                                            ?? '—'
+                                                    ) ?>
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="visa-chip">
+                                                <?= e(
+                                                    strtoupper(
+                                                        (string)(
+                                                            $tourist['visa_type']
+                                                            ?? '—'
+                                                        )
+                                                    )
+                                                ) ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge <?= e(
+                                                statusClass($attentionStatus)
+                                            ) ?>">
+                                                <i class="fa-solid <?= e(
+                                                    statusIcon($attentionStatus)
+                                                ) ?>"></i>
+                                                <?= e(statusLabel($attentionStatus)) ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <?= e(
+                                                formatDate(
+                                                    $tourist['_stay_until_date']
+                                                    ?? null
+                                                )
+                                            ) ?>
+                                        </td>
+                                        <td class="<?= $attentionStatus === 'DEPARTURE_NOT_REPORTED'
+                                            ? 'remaining-danger'
+                                            : 'remaining-warning'
+                                        ?>">
+                                            <?= e(
+                                                remainingLabel(
+                                                    $tourist['_remaining_days'] ?? null,
+                                                    $attentionStatus
+                                                )
+                                            ) ?>
+                                        </td>
+                                        <td>
+                                            <a
+                                                href="visa_travel_records.php?submission_id=<?= e(
+                                                    $tourist['id'] ?? ''
+                                                ) ?>"
+                                                class="table-action"
+                                                title="View visa and travel details"
+                                            >
+                                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </section>
+
+            <div class="report-footnote">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>
+                    Travel states are derived from approved visa validity and
+                    visa_travel_records. Report views are read-only and do not
+                    alter source visa or travel records.
+                </span>
+            </div>
+        </div>
     <?php endif; ?>
 
 </div>
+
+<?php if ($activeTab === 'reports'): ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<?php endif; ?>
 
 <script>
 console.log(
@@ -3013,20 +3428,167 @@ console.log(
         'pending' => $pendingCount,
         'approved' => $totalApproved,
         'active' => $activeCount,
-        'expiringSoon' =>
-            $expiringSoonCount,
-        'departureNotReported' =>
-            $departureNotReportedCount,
-        'notEntered' =>
-            $notEnteredCount,
-        'departed' =>
-            $departedCount,
-        'used' =>
-            $usedCount,
-        'expired' =>
-            $expiredCount,
+        'expiringSoon' => $expiringSoonCount,
+        'departureNotReported' => $departureNotReportedCount,
+        'notEntered' => $notEnteredCount,
+        'departed' => $departedCount,
+        'used' => $usedCount,
+        'expired' => $expiredCount,
     ]) ?>
 );
+
+<?php if ($activeTab === 'reports'): ?>
+(() => {
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js is unavailable; report charts were not rendered.');
+        return;
+    }
+
+    Chart.defaults.font.family =
+        'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
+    Chart.defaults.color = '#64748b';
+
+    const travelStatusData = <?= jsonForJs($travelStatusChart) ?>;
+    const visaTypeData = <?= jsonForJs($visaTypeChart) ?>;
+    const trendLabels = <?= jsonForJs($trendLabels) ?>;
+    const trendValues = <?= jsonForJs($trendValues) ?>;
+
+    const travelStatusCanvas = document.getElementById('travelStatusChart');
+    if (travelStatusCanvas) {
+        new Chart(travelStatusCanvas, {
+            type: 'bar',
+            data: {
+                labels: travelStatusData.labels,
+                datasets: [{
+                    data: travelStatusData.values,
+                    backgroundColor: [
+                        '#cbd5e1',
+                        '#22c55e',
+                        '#f59e0b',
+                        '#ef4444',
+                        '#3b82f6',
+                        '#8b5cf6',
+                        '#64748b'
+                    ],
+                    borderWidth: 0,
+                    borderRadius: 5,
+                    barThickness: 15,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        displayColors: false,
+                        callbacks: {
+                            label: (context) => `${context.raw} record${Number(context.raw) === 1 ? '' : 's'}`,
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            font: { size: 9 },
+                        },
+                        grid: { color: '#eef2f7' },
+                        border: { display: false },
+                    },
+                    y: {
+                        ticks: {
+                            font: { size: 9, weight: '600' },
+                        },
+                        grid: { display: false },
+                        border: { display: false },
+                    }
+                }
+            }
+        });
+    }
+
+    const visaTypeCanvas = document.getElementById('visaTypeChart');
+    if (visaTypeCanvas) {
+        new Chart(visaTypeCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: visaTypeData.labels,
+                datasets: [{
+                    data: visaTypeData.values,
+                    backgroundColor: ['#2563eb', '#7c3aed', '#94a3b8'],
+                    borderColor: '#ffffff',
+                    borderWidth: 3,
+                    hoverOffset: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.label}: ${context.raw}`,
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    const activityCanvas = document.getElementById('visaActivityChart');
+    if (activityCanvas && trendLabels.length > 0) {
+        new Chart(activityCanvas, {
+            type: 'line',
+            data: {
+                labels: trendLabels,
+                datasets: [{
+                    label: 'Visa Activity',
+                    data: trendValues,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, .08)',
+                    fill: true,
+                    tension: .35,
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index',
+                },
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { font: { size: 9 } },
+                        border: { display: false },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            font: { size: 9 },
+                        },
+                        grid: { color: '#eef2f7' },
+                        border: { display: false },
+                    }
+                }
+            }
+        });
+    }
+})();
+<?php endif; ?>
 </script>
 
 <?php render_admin_end(); ?>

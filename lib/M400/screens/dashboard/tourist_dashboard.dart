@@ -5,8 +5,8 @@ import 'package:my_find/AI VISA/screens/visa_history_screen.dart';
 import 'package:my_find/AI VISA/screens/visa_application_screen.dart';
 import 'package:my_find/AI VISA/screens/me_screen.dart';
 import 'package:my_find/AI VISA/screens/notifications_screen.dart';
-import 'package:my_find/AI VISA/screens/visa_submit_screen_m500.dart';
-import 'package:my_find/AI VISA/screens/visa_travel_declaration_screen.dart';
+import 'package:my_find/M500/screens/visa_submit_screen_m500.dart';
+import 'package:my_find/M500/screens/visa_travel_declaration_screen.dart';
 
 class TouristDashboard extends StatefulWidget {
   final ProfileModel profile;
