@@ -38,12 +38,30 @@ class _MyFindAppState extends State<MyFindApp> {
     _authSubscription = SupabaseConfig.client.auth.onAuthStateChange.listen(
       _handleAuthState,
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('Supabase authentication callback failed: $error');
+        debugPrint('Supabase authentication callback failed.');
       },
     );
+    // A cold-start callback can finish before the widget subscribes. An
+    // untrusted in-memory session may open recovery, never the dashboard.
+    final session = SupabaseConfig.client.auth.currentSession;
+    if (session != null && !SupabaseConfig.sessionStorage.isTrusted(session)) {
+      _handleAuthState(AuthState(AuthChangeEvent.passwordRecovery, session));
+    }
   }
 
   void _handleAuthState(AuthState state) {
+    if (state.event == AuthChangeEvent.passwordRecovery &&
+        state.session != null) {
+      // Explicitly revoke any prior admission on every recovery event, even
+      // when a reset screen is already open. Token refresh cannot restore it.
+      unawaited(
+        SupabaseConfig.sessionStorage.removePersistedSession().catchError((
+          Object _,
+        ) {
+          debugPrint('Could not clear saved authentication state.');
+        }),
+      );
+    }
     if (state.event != AuthChangeEvent.passwordRecovery ||
         state.session == null ||
         _recoveryRouteIsOpen) {
