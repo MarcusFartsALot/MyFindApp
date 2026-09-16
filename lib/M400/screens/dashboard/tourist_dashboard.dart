@@ -6,6 +6,7 @@ import 'package:my_find/AI VISA/screens/visa_application_screen.dart';
 import 'package:my_find/AI VISA/screens/me_screen.dart';
 import 'package:my_find/AI VISA/screens/notifications_screen.dart';
 import 'package:my_find/AI VISA/screens/visa_submit_screen_m500.dart';
+import 'package:my_find/AI VISA/screens/visa_travel_declaration_screen.dart';
 
 class TouristDashboard extends StatefulWidget {
   final ProfileModel profile;
@@ -376,55 +377,38 @@ class _TouristDashboardState extends State<TouristDashboard> {
         // ===== Upload PDF 卡片 → 导航到 VisaSubmitScreenM500 =====
         const SizedBox(height: 12),
 
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.upload_file_rounded, color: Color(0xFF1E3A8A), size: 22),
-            ),
-            title: const Text(
-              'Submit Visa to Admin',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF0F172A)),
-            ),
-            subtitle: const Text(
-              'Upload PDF for visa application (Max 10MB)',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Upload',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Color(0xFF1E3A8A)),
-              ),
-            ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => VisaSubmitScreenM500(profile: _currentProfile),
+        _AnimatedActionCard(
+          title: 'Submit Visa to Admin',
+          subtitle: 'Upload PDF for visa application (Max 10MB)',
+          icon: Icons.upload_file_rounded,
+          color: const Color(0xFF1E3A8A),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => VisaSubmitScreenM500(
+                  profile: _currentProfile,
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
+        ),
+        // ===== Visa declaration 的 =====
+        const SizedBox(height: 12),
+
+        _AnimatedActionCard(
+          title: 'Travel Declaration',
+          subtitle: 'Report your actual arrival and departure',
+          icon: Icons.flight_land_rounded,
+          color: const Color(0xFF1E3A8A),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => VisaTravelDeclarationScreen(
+                  profileId: _currentProfile.id,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
