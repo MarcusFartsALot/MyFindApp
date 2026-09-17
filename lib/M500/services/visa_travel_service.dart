@@ -293,9 +293,7 @@ class VisaTravelService {
       );
     }
 
-    if (actualDepartureAt.isAfter(
-      DateTime.now().add(const Duration(minutes: 5)),
-    )) {
+    if (actualDepartureAt.isAfter(DateTime.now())) {
       throw Exception(
         'FUTURE_DEPARTURE_NOT_ALLOWED: Actual departure time cannot be in the future.',
       );
@@ -364,33 +362,33 @@ class VisaTravelService {
     final expiry = _dateOnly(visa.expiryDate);
     final latest = records.isEmpty ? null : records.first;
 
-    if (latest?.actualDepartureAt != null) {
-      if (visa.isSEV) return VisaTravelState.used;
-      if (today.isAfter(expiry)) return VisaTravelState.expired;
-      return VisaTravelState.departed;
+    if (latest != null) {
+      if (latest.actualDepartureAt != null) {
+        if (visa.isSEV) return VisaTravelState.used;
+        if (today.isAfter(expiry)) return VisaTravelState.expired;
+        return VisaTravelState.departed;
+      }
+
+      final stayUntil = _dateOnly(latest.stayUntilDate);
+
+      if (today.isAfter(stayUntil)) {
+        return VisaTravelState.departureNotReported;
+      }
+
+      final remaining = stayUntil.difference(today).inDays;
+
+      if (remaining <= 10) {
+        return VisaTravelState.expiringSoon;
+      }
+
+      return VisaTravelState.active;
     }
 
     if (today.isAfter(expiry)) {
       return VisaTravelState.expired;
     }
 
-    if (latest == null) {
-      return VisaTravelState.notEntered;
-    }
-
-    final stayUntil = _dateOnly(latest.stayUntilDate);
-
-    if (today.isAfter(stayUntil)) {
-      return VisaTravelState.departureNotReported;
-    }
-
-    final remaining = stayUntil.difference(today).inDays;
-
-    if (remaining <= 10) {
-      return VisaTravelState.expiringSoon;
-    }
-
-    return VisaTravelState.active;
+    return VisaTravelState.notEntered;
   }
 
   int? calculateRemainingDays(List<VisaTravelRecord> records) {
@@ -453,9 +451,7 @@ class VisaTravelService {
       );
     }
 
-    if (actualEntryAt.isAfter(
-      DateTime.now().add(const Duration(minutes: 5)),
-    )) {
+    if (actualEntryAt.isAfter(DateTime.now())) {
       throw Exception(
         'FUTURE_ARRIVAL_NOT_ALLOWED: Actual arrival time cannot be in the future.',
       );

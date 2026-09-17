@@ -83,8 +83,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     // Separate notifications into the 2 requested categories
-    final adminAlerts = _allNotifications.where((n) => n['type'] == 'Alert').toList();
-    final touristActivities = _allNotifications.where((n) => n['type'] != 'Alert').toList();
+    final notificationItems = _allNotifications.where(
+      (item) =>
+          item['type'] == 'Notification' ||
+          item['type'] == 'Warning' ||
+          item['type'] == 'Alert',
+    ).toList();
+    final activityItems = _allNotifications
+        .where((item) => item['type'] == 'Activity')
+        .toList();
 
     return DefaultTabController(
       length: 2,
@@ -111,7 +118,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   children: [
                     const Icon(Icons.notifications_active_outlined, size: 18),
                     const SizedBox(width: 6),
-                    Text('Notifications (${adminAlerts.length})'),
+                    Text('Notifications (${notificationItems.length})'),
                   ],
                 ),
               ),
@@ -121,7 +128,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   children: [
                     const Icon(Icons.history_rounded, size: 18),
                     const SizedBox(width: 6),
-                    Text('Activities (${touristActivities.length})'),
+                    Text('Activities (${activityItems.length})'),
                   ],
                 ),
               ),
@@ -135,19 +142,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           children: [
             // Tab 1: Admin Alerts & Messages
             _buildNotificationListView(
-              items: adminAlerts,
+              items: notificationItems,
               emptyTitle: 'No Admin Notifications',
               emptySubtitle: 'Important visa expiration alerts and official admin notices will appear here.',
               emptyIcon: Icons.notifications_off_outlined,
-              isAlertCategory: true,
             ),
             // Tab 2: Tourist Activity Tracking Logs
             _buildNotificationListView(
-              items: touristActivities,
+              items: activityItems,
               emptyTitle: 'No Recent Activities',
               emptySubtitle: 'Your activity history (e.g. profile updates, password changes, visa submissions) will be logged here.',
               emptyIcon: Icons.assignment_outlined,
-              isAlertCategory: false,
             ),
           ],
         ),
@@ -160,7 +165,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     required String emptyTitle,
     required String emptySubtitle,
     required IconData emptyIcon,
-    required bool isAlertCategory,
   }) {
     if (items.isEmpty) {
       return Center(
@@ -203,20 +207,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           final item = items[index];
           final bool isRead = item['is_read'] == true;
           final String title = item['title'] ?? 'Notification';
-
-          // Dynamically assign icons based on the activity title
-          IconData displayIcon = Icons.task_alt_rounded;
-          if (isAlertCategory) {
-            displayIcon = Icons.warning_amber_rounded;
-          } else {
-            if (title.contains('Security')) {
-              displayIcon = Icons.shield_outlined;
-            } else if (title.contains('Profile')) {
-              displayIcon = Icons.manage_accounts_outlined;
-            } else if (title.contains('Visa Application')) {
-              displayIcon = Icons.airplane_ticket_outlined;
-            }
-          }
+          final visual = _notificationVisual(item);
 
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -224,12 +215,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             decoration: BoxDecoration(
               color: isRead
                   ? Colors.white
-                  : (isAlertCategory ? const Color(0xFFFEF2F2) : const Color(0xFFEFF6FF)),
+                  : visual.unreadBackground,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: isRead
                     ? const Color(0xFFE2E8F0)
-                    : (isAlertCategory ? const Color(0xFFFCA5A5) : const Color(0xFFBFDBFE)),
+                    : visual.unreadBorder,
               ),
               boxShadow: [
                 BoxShadow(
@@ -245,14 +236,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isAlertCategory
-                        ? const Color(0xFFDC2626).withOpacity(0.1)
-                        : const Color(0xFF1E3A8A).withOpacity(0.1),
+                    color: visual.accent.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    displayIcon,
-                    color: isAlertCategory ? const Color(0xFFDC2626) : const Color(0xFF1E3A8A),
+                    visual.icon,
+                    color: visual.accent,
                     size: 20,
                   ),
                 ),
@@ -314,5 +303,61 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         },
       ),
     );
+  }
+
+  ({
+    IconData icon,
+    Color accent,
+    Color unreadBackground,
+    Color unreadBorder,
+  }) _notificationVisual(Map<String, dynamic> item) {
+    switch (item['type']) {
+      case 'Notification':
+        return (
+          icon: Icons.info_outline_rounded,
+          accent: const Color(0xFF1E3A8A),
+          unreadBackground: const Color(0xFFEFF6FF),
+          unreadBorder: const Color(0xFFBFDBFE),
+        );
+      case 'Warning':
+        return (
+          icon: Icons.warning_amber_rounded,
+          accent: const Color(0xFFD97706),
+          unreadBackground: const Color(0xFFFFFBEB),
+          unreadBorder: const Color(0xFFFDE68A),
+        );
+      case 'Alert':
+        return (
+          icon: Icons.warning_amber_rounded,
+          accent: const Color(0xFFDC2626),
+          unreadBackground: const Color(0xFFFEF2F2),
+          unreadBorder: const Color(0xFFFCA5A5),
+        );
+      case 'Activity':
+        final title = item['title']?.toString() ?? '';
+        IconData icon = Icons.task_alt_rounded;
+
+        if (title.contains('Security')) {
+          icon = Icons.shield_outlined;
+        } else if (title.contains('Profile')) {
+          icon = Icons.manage_accounts_outlined;
+        } else if (title.contains('Visa Application')) {
+          icon = Icons.airplane_ticket_outlined;
+        }
+
+        return (
+          icon: icon,
+          accent: const Color(0xFF1E3A8A),
+          unreadBackground: const Color(0xFFEFF6FF),
+          unreadBorder: const Color(0xFFBFDBFE),
+        );
+      default:
+        return (
+          icon: Icons.help_outline_rounded,
+          accent: const Color(0xFF64748B),
+          unreadBackground: const Color(0xFFF8FAFC),
+          unreadBorder: const Color(0xFFCBD5E1),
+        );
+    }
   }
 }

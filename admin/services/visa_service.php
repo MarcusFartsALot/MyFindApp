@@ -364,7 +364,8 @@ class VisaService
             . $effectiveDate->format('Y-m-d')
             . '. Visa type: '
             . $visaType
-            . '.'
+            . '.',
+            'Notification'
         );
 
         return true;
@@ -457,7 +458,8 @@ class VisaService
             'Visa Application Rejected',
             'Your visa application ('
             . ($submission['reference_id'] ?? '')
-            . ') has been rejected.'
+            . ') has been rejected.',
+            'Alert'
         );
 
         return true;
@@ -542,7 +544,8 @@ class VisaService
     private function sendNotification(
         ?string $profileId,
         string $title,
-        string $message
+        string $message,
+        string $type
     ): void {
         if (!$profileId) {
             return;
@@ -556,7 +559,7 @@ class VisaService
                     'user_id' => $profileId,
                     'title' => $title,
                     'message' => $message,
-                    'type' => 'Alert',
+                    'type' => $type,
                     'is_read' => false,
                 ],
                 ['Prefer: return=minimal']

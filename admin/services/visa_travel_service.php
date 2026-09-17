@@ -226,64 +226,61 @@ class VisaTravelService
 
         $latest = $records[0] ?? null;
 
-        if (
-            is_array($latest)
-            && !empty($latest['actual_departure_at'])
-        ) {
-            $visaType = strtoupper(
-                trim((string)($submission['visa_type'] ?? 'SEV'))
-            );
+        if (is_array($latest)) {
+            if (!empty($latest['actual_departure_at'])) {
+                $visaType = strtoupper(
+                    trim((string)($submission['visa_type'] ?? 'SEV'))
+                );
 
-            if ($visaType === 'SEV') {
-                return 'USED';
+                if ($visaType === 'SEV') {
+                    return 'USED';
+                }
+
+                if ($today > $expiry) {
+                    return 'EXPIRED';
+                }
+
+                return 'DEPARTED';
             }
 
-            if ($today > $expiry) {
-                return 'EXPIRED';
+            $stayUntilValue =
+                $latest['stay_until_date'] ?? null;
+
+            if (!$stayUntilValue) {
+                return 'ACTIVE';
             }
 
-            return 'DEPARTED';
+            try {
+                $stayUntil = new DateTimeImmutable(
+                    (string)$stayUntilValue
+                );
+            } catch (Throwable) {
+                return 'ACTIVE';
+            }
+
+            if ($today > $stayUntil) {
+                return 'DEPARTURE_NOT_REPORTED';
+            }
+
+            $remainingDays =
+                $stayUntil->diff($today)->days;
+
+            if ($remainingDays === false) {
+                return 'ACTIVE';
+            }
+
+            if ($remainingDays <= self::EXPIRING_SOON_DAYS) {
+                return 'EXPIRING_SOON';
+            }
+
+            return 'ACTIVE';
         }
 
         if ($today > $expiry) {
             return 'EXPIRED';
         }
 
-        if ($latest === null) {
-            return 'NOT_ENTERED';
-        }
-
-        $stayUntilValue =
-            $latest['stay_until_date'] ?? null;
-
-        if (!$stayUntilValue) {
-            return 'ACTIVE';
-        }
-
-        try {
-            $stayUntil = new DateTimeImmutable(
-                (string)$stayUntilValue
-            );
-        } catch (Throwable) {
-            return 'ACTIVE';
-        }
-
-        if ($today > $stayUntil) {
-            return 'DEPARTURE_NOT_REPORTED';
-        }
-
-        $remainingDays =
-            $stayUntil->diff($today)->days;
-
-        if ($remainingDays === false) {
-            return 'ACTIVE';
-        }
-
-        if ($remainingDays <= self::EXPIRING_SOON_DAYS) {
-            return 'EXPIRING_SOON';
-        }
-
-        return 'ACTIVE';
+        return 'NOT_ENTERED';
     }
 
     // Remaining permitted stay

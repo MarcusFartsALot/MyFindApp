@@ -572,7 +572,10 @@ class _VisaTravelDeclarationScreenState
         return _buildUsedSEVCard();
 
       case VisaTravelState.expired:
-        return _buildExpiredCard();
+        return _buildExpiredCard(
+          visa,
+          travelContext,
+        );
 
       case VisaTravelState.noVisa:
         return _buildNoVisaCard();
@@ -1011,14 +1014,20 @@ class _VisaTravelDeclarationScreenState
   }
 // Expired
 
-  Widget _buildExpiredCard() {
+  Widget _buildExpiredCard(
+      VisaTravelVisa visa,
+      VisaTravelContext travelContext,
+      ) {
+    final canReportHistoricalArrival =
+        travelContext.records.isEmpty;
+
     return _sectionCard(
       child:
-      const Column(
+      Column(
         crossAxisAlignment:
         CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Visa Expired',
             style:
             TextStyle(
@@ -1032,12 +1041,11 @@ class _VisaTravelDeclarationScreenState
               FontWeight.w800,
             ),
           ),
-          SizedBox(
+          const SizedBox(
             height: 8,
           ),
-          Text(
-            'This visa is no longer valid for a new arrival. '
-                'Existing travel records remain available below.',
+          const Text(
+            'This visa is expired. Existing travel records remain available below.',
             style:
             TextStyle(
               color:
@@ -1050,6 +1058,56 @@ class _VisaTravelDeclarationScreenState
               1.5,
             ),
           ),
+          if (canReportHistoricalArrival) ...[
+            const SizedBox(
+              height: 20,
+            ),
+            SizedBox(
+              width:
+              double.infinity,
+              height: 48,
+              child:
+              ElevatedButton.icon(
+                onPressed:
+                _isSubmitting
+                    ? null
+                    : () {
+                  _showArrivalForm(
+                    visa,
+                  );
+                },
+                icon:
+                const Icon(
+                  Icons.login_rounded,
+                ),
+                label:
+                const Text(
+                  'Report Historical Arrival',
+                  style:
+                  TextStyle(
+                    fontWeight:
+                    FontWeight.w700,
+                  ),
+                ),
+                style:
+                ElevatedButton.styleFrom(
+                  backgroundColor:
+                  const Color(
+                    0xFF1E3A8A,
+                  ),
+                  foregroundColor:
+                  Colors.white,
+                  shape:
+                  RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(
+                      12,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1370,6 +1428,29 @@ class _VisaTravelDeclarationScreenState
 
                       if (selected !=
                           null) {
+                        final candidate =
+                        DateTime(
+                          selectedDate.year,
+                          selectedDate.month,
+                          selectedDate.day,
+                          selected.hour,
+                          selected.minute,
+                        );
+
+                        if (candidate.isAfter(
+                          DateTime.now(),
+                        )) {
+                          await _showFormErrorDialog(
+                            modalContext,
+                            'Actual arrival time cannot be in the future.',
+                          );
+                          return;
+                        }
+
+                        if (!modalContext.mounted) {
+                          return;
+                        }
+
                         setModalState(
                               () {
                             selectedTime =
@@ -1723,6 +1804,39 @@ class _VisaTravelDeclarationScreenState
 
                       if (selected !=
                           null) {
+                        final candidate =
+                        DateTime(
+                          selectedDate.year,
+                          selectedDate.month,
+                          selectedDate.day,
+                          selected.hour,
+                          selected.minute,
+                        );
+
+                        if (candidate.isBefore(
+                          record.actualEntryAt,
+                        )) {
+                          await _showFormErrorDialog(
+                            modalContext,
+                            'Departure cannot be earlier than arrival.',
+                          );
+                          return;
+                        }
+
+                        if (candidate.isAfter(
+                          DateTime.now(),
+                        )) {
+                          await _showFormErrorDialog(
+                            modalContext,
+                            'Actual departure time cannot be in the future.',
+                          );
+                          return;
+                        }
+
+                        if (!modalContext.mounted) {
+                          return;
+                        }
+
                         setModalState(
                               () {
                             selectedTime =

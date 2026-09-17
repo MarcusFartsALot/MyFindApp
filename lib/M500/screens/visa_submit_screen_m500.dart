@@ -717,6 +717,22 @@ class _VisaSubmitScreenM500State
       return 'Departure date cannot be before arrival date.';
     }
 
+    final plannedArrivalDate = DateTime(
+      arrival.year,
+      arrival.month,
+      arrival.day,
+    );
+    final now = DateTime.now();
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
+    if (plannedArrivalDate.isBefore(today)) {
+      return 'Planned arrival date cannot be before today.';
+    }
+
     if (_visaType != 'SEV' &&
         _visaType != 'MEV') {
       return 'Please select a valid visa type.';
@@ -768,6 +784,12 @@ class _VisaSubmitScreenM500State
       'APPLICATION_ALREADY_USED',
     )) {
       return 'This AI visa application has already been used for an approved visa. Please complete a new AI visa application before applying again.';
+    }
+
+    if (message.contains(
+      'OPEN_TRIP_EXISTS',
+    )) {
+      return 'Please report your departure before submitting a new visa application.';
     }
 
     if (message.contains(

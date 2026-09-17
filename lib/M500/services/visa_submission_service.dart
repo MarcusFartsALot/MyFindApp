@@ -140,6 +140,11 @@ class VisaSubmissionService {
     required Uint8List pdfBytes,
     required String? pdfFileName,
   }) async {
+    _validatePlannedTravelDates(
+      arrivalDate: arrivalDate,
+      departureDate: departureDate,
+    );
+
     final applicationId = await _findApplicationId(
       referenceId: referenceId,
       transactionId: transactionId,
@@ -231,6 +236,63 @@ class VisaSubmissionService {
 
       rethrow;
     }
+  }
+
+  void _validatePlannedTravelDates({
+    required String arrivalDate,
+    required String departureDate,
+  }) {
+    final arrival = DateTime.tryParse(arrivalDate.trim());
+    final departure = DateTime.tryParse(departureDate.trim());
+
+    if (arrival == null || departure == null) {
+      throw Exception(
+        'INVALID_TRAVEL_DATES: Invalid travel dates.',
+      );
+    }
+
+    final plannedArrivalDate = DateTime(
+      arrival.year,
+      arrival.month,
+      arrival.day,
+    );
+    final plannedDepartureDate = DateTime(
+      departure.year,
+      departure.month,
+      departure.day,
+    );
+
+    if (plannedDepartureDate.isBefore(plannedArrivalDate)) {
+      throw Exception(
+        'INVALID_TRAVEL_DATES: '
+        'Departure date cannot be before arrival date.',
+      );
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
+    if (plannedArrivalDate.isBefore(today)) {
+      throw Exception(
+        'INVALID_TRAVEL_DATES: '
+        'Planned arrival date cannot be before today.',
+      );
+    }
+  }
+
+  Future<bool> _hasOpenTravel(String submissionId) async {
+    final rows = await _supabase
+        .from('visa_travel_records')
+        .select('id')
+        .eq('submission_id', submissionId)
+        .isFilter('actual_departure_at', null)
+        .limit(1);
+
+    return List<Map<String, dynamic>>.from(rows).isNotEmpty;
   }
 
   Future<bool> _hasCompletedTravel(String submissionId) async {
@@ -599,6 +661,18 @@ class VisaSubmissionService {
       }
     }
 
+    for (final submission in submissions) {
+      final submissionId = submission['id']?.toString().trim() ?? '';
+
+      if (submissionId.isNotEmpty &&
+          await _hasOpenTravel(submissionId)) {
+        throw Exception(
+          'OPEN_TRIP_EXISTS: '
+          'Please report your departure before submitting a new visa application.',
+        );
+      }
+    }
+
     final now = DateTime.now();
     final today = DateTime(
       now.year,
@@ -612,6 +686,8 @@ class VisaSubmissionService {
       if (status != 'approved') {
         continue;
       }
+
+      final submissionId = submission['id']?.toString().trim() ?? '';
 
       final visaType =
           submission['visa_type']?.toString().trim().toUpperCase() ?? '';
@@ -638,8 +714,6 @@ class VisaSubmissionService {
       }
 
       if (visaType == 'SEV') {
-        final submissionId = submission['id']?.toString().trim() ?? '';
-
         if (submissionId.isNotEmpty &&
             await _hasCompletedTravel(submissionId)) {
           continue;
