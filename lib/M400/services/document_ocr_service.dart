@@ -33,8 +33,9 @@ class DocumentOcrService {
         compact.contains('KADPENGENALAN') ||
         (compact.contains('MALAYSIA') && compact.contains('IDENTITYCARD'));
     final reverseHeading =
-        compact.contains('PENDAFTARANNEGARA') &&
-        (compact.contains('KETUAPENGARAH') || compact.contains('JABATAN'));
+        compact.contains('PENDAFTARANNEGARA') ||
+            compact.contains('KETUAPENGARAH') ||
+            compact.contains('JABATANPENDAFTARANNEGARA');
     if (requestedRole == 'citizen' &&
         (looksLikePassport ||
             !(myKadHeading ||
@@ -54,23 +55,29 @@ class DocumentOcrService {
     required String extractedText,
     required String identityNumber,
   }) {
-    if (normalizeIdentityNumber(
-          identityNumber,
-          requestedRole: 'citizen',
-        ).length !=
-        12) {
-      return false;
-    }
-    final numbers = RegExp(
-      r'(?<!\d)\d{6}[\s-]?\d{2}[\s-]?\d{4}(?!\d)',
-    ).allMatches(extractedText);
-    return numbers.every(
-      (match) => identityNumberMatches(
-        extractedText: match[0]!,
-        identityNumber: identityNumber,
-        requestedRole: 'citizen',
-      ),
+    final expected = normalizeIdentityNumber(
+      identityNumber,
+      requestedRole: 'citizen',
     );
+
+    // The typed MyKad number must remain the standard 12-digit number.
+    if (expected.length != 12) return false;
+
+    final matches = RegExp(
+      r'(?<!\d)'
+      r'(\d{6})[\s-]?'
+      r'(\d{2})[\s-]?'
+      r'(\d{4})'
+      r'(?:[\s-]?\d{2}[\s-]?\d{2})?'
+      r'(?!\d)',
+    ).allMatches(extractedText);
+
+    return matches.any((match) {
+      final firstTwelveDigits =
+          '${match.group(1)}${match.group(2)}${match.group(3)}';
+
+      return firstTwelveDigits == expected;
+    });
   }
 
   /// OCR text stays inside the application and is never presented to the
