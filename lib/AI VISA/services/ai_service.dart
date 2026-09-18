@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class AiService {
-  final String _aiApiKey = "AQ.Ab8RN6KzVkLBxtFqlWOHdpBAGA_vYkNj7DIYAWxsgJqROByneA";
+  final String _aiApiKey = "AQ.Ab8RN6KkIu_GARZPots4zaLpgTViREO7vlRjfQpAaiy0Pxw9ng";
   final String _aiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
 
   /// Evaluates the entire structured application dataset for security, financial sanity, and semantic consistency

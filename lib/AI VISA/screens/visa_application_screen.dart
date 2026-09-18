@@ -665,6 +665,21 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     );
   }
 
+  bool _validateIncome() {
+    final double? monthly = double.tryParse(_monthlyIncCtrl.text.trim());
+    final double? annual = double.tryParse(_annualIncCtrl.text.trim());
+
+    if (monthly != null && annual != null && monthly > annual) {
+      _showStatusDialog(
+        title: "Invalid Income Information",
+        message: "Monthly income cannot be greater than annual income.",
+        isError: true,
+      );
+      return false;
+    }
+    return true;
+  }
+
   bool _validateLogicalDates() {
     DateTime? passIssue = DateTime.tryParse(_passIssueCtrl.text);
     DateTime? passExpiry = DateTime.tryParse(_passExpiryCtrl.text);
@@ -743,6 +758,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
     }
 
     if (!_validateLogicalDates()) return false;
+    if (!_validateIncome()) return false;
 
     if (_selectedCardType == null) {
       _showStatusDialog(
@@ -1074,7 +1090,7 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A)),
                   onPressed: () {
-                    if (_validateLogicalDates()) {
+                    if (_validateLogicalDates() && _validateIncome()) {
                       details.onStepContinue!();
                     }
                   },
@@ -1170,13 +1186,65 @@ class _VisaApplicationScreenState extends State<VisaApplicationScreen> with Widg
         Step(
           title: const Text('Supporting Documents'),
           isActive: _currentStep >= 4,
-          content: Column(children: [
-            OutlinedButton.icon(
-              onPressed: _handleDocumentUpload,
-              icon: const Icon(Icons.attach_file),
-              label: Text(_pickedFileName ?? 'Attach Optional Document (PNG/PDF)'),
-            ),
-          ]),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_pickedFileName == null)
+                OutlinedButton.icon(
+                  onPressed: _handleDocumentUpload,
+                  icon: const Icon(Icons.attach_file, color: Color(0xFF1E3A8A)),
+                  label: const Text(
+                    'Attach Optional Document (PNG/PDF)',
+                    style: TextStyle(color: Color(0xFF1E3A8A)),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.insert_drive_file_outlined, color: Color(0xFF1E3A8A), size: 20),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _pickedFileName!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F172A),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _pickedFileName = null;
+                            _uploadedFileUrl = "";
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: Icon(
+                            Icons.cancel,
+                            color: Color(0xFFDC2626),
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
         Step(
           title: const Text('Proceed For Payment'),
