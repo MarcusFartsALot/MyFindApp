@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:my_find/M500/models/visa_travel_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -28,15 +29,22 @@ class VisaTravelService {
 
     final records = results[0] as List<VisaTravelRecord>;
     final plannedTravel = results[1] as PlannedTravelInformation?;
+    final state = calculateTravelState(
+      visa: visa,
+      records: records,
+    );
+
+    await _createTemporalNotificationIfNeeded(
+      userId: visa.profileId,
+      referenceId: visa.referenceId,
+      state: state,
+    );
 
     return VisaTravelContext(
       visa: visa,
       plannedTravel: plannedTravel,
       records: records,
-      state: calculateTravelState(
-        visa: visa,
-        records: records,
-      ),
+      state: state,
       remainingDays: calculateRemainingDays(records),
     );
   }
@@ -144,6 +152,65 @@ class VisaTravelService {
       });
     } catch (_) {
       // Activity logging must never make a valid travel declaration fail.
+    }
+  }
+
+  Future<void> _createTemporalNotificationIfNeeded({
+    required String userId,
+    required String referenceId,
+    required VisaTravelState state,
+  }) async {
+    final recipientId = userId.trim();
+    final trimmedReferenceId = referenceId.trim();
+
+    if (recipientId.isEmpty) return;
+
+    if (trimmedReferenceId.isEmpty) {
+      debugPrint(
+        'Unable to record temporal notification: reference ID is empty.',
+      );
+      return;
+    }
+
+    late final String title;
+    late final String message;
+    late final String type;
+
+    if (state == VisaTravelState.expiringSoon) {
+      title = 'Stay Expiring Soon [$trimmedReferenceId]';
+      message = 'Your permitted stay is approaching its expiry date. '
+          'Please review your travel status.';
+      type = 'Warning';
+    } else if (state == VisaTravelState.departureNotReported) {
+      title = 'Departure Not Reported [$trimmedReferenceId]';
+      message = 'Your permitted stay has ended and no departure has been '
+          'reported. Please report your departure.';
+      type = 'Alert';
+    } else {
+      return;
+    }
+
+    try {
+      final existingRows = await _supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', recipientId)
+          .eq('title', title)
+          .limit(1);
+
+      if (existingRows.isNotEmpty) return;
+
+      await _supabase.from('notifications').insert({
+        'user_id': recipientId,
+        'title': title,
+        'message': message,
+        'type': type,
+        'is_read': false,
+      });
+    } catch (e) {
+      debugPrint(
+        'Unable to record temporal notification: $e',
+      );
     }
   }
 
