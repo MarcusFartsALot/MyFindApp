@@ -9,14 +9,15 @@ import '../auth/about_screen.dart';
 import 'role_router.dart';
 
 class SessionGate extends StatefulWidget {
-  const SessionGate({super.key});
+  const SessionGate({super.key, this.authService});
+  final AuthService? authService;
 
   @override
   State<SessionGate> createState() => _SessionGateState();
 }
 
 class _SessionGateState extends State<SessionGate> {
-  final AuthService _authService = AuthService();
+  late final AuthService _authService = widget.authService ?? AuthService();
   StreamSubscription<AuthState>? _authSubscription;
   Future<ProfileModel>? _profileFuture;
 
@@ -24,13 +25,21 @@ class _SessionGateState extends State<SessionGate> {
   void initState() {
     super.initState();
     _loadCurrentProfile();
-    _authSubscription = _authService.authStateChanges.listen(_handleAuthState);
+    _authSubscription = _authService.authStateChanges.listen(
+      _handleAuthState,
+      onError: (Object _, StackTrace _) {
+        if (mounted) setState(() => _profileFuture = null);
+      },
+    );
   }
 
   void _handleAuthState(AuthState state) {
     if (!mounted) return;
     setState(() {
-      _profileFuture = state.session?.user == null
+      _profileFuture =
+          !_authService.hasTrustedSession ||
+              state.event == AuthChangeEvent.passwordRecovery ||
+              state.session?.user == null
           ? null
           : _authService.fetchProfile(state.session!.user.id);
     });
@@ -38,7 +47,9 @@ class _SessionGateState extends State<SessionGate> {
 
   void _loadCurrentProfile() {
     final user = _authService.currentUser;
-    _profileFuture = user == null ? null : _authService.fetchProfile(user.id);
+    _profileFuture = user == null || !_authService.hasTrustedSession
+        ? null
+        : _authService.fetchProfile(user.id);
   }
 
   @override
@@ -49,7 +60,7 @@ class _SessionGateState extends State<SessionGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_authService.currentSession == null || _profileFuture == null) {
+    if (!_authService.hasTrustedSession || _profileFuture == null) {
       return const AboutScreen();
     }
 
